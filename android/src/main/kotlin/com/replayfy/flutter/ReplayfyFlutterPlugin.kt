@@ -4,8 +4,10 @@ import android.app.Application
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
+import com.replayfy.android.MaskRect
 import com.replayfy.android.Replay
 import com.replayfy.android.ReplayConfig
+import com.replayfy.android.ReplayMaskStyle
 import com.replayfy.android.internal.mobile.ReplayCore
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -38,9 +40,10 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
   private val mainHandler = Handler(Looper.getMainLooper())
   private var pulling = false
 
-  // Latest rects pulled from Dart, in decor-view device pixels.
+  // Latest rects pulled from Dart, in decor-view device pixels, each carrying
+  // its own render style (blur / overlay) so a screen can mix mask types.
   @Volatile
-  private var cachedRects: List<Rect> = emptyList()
+  private var cachedRects: List<MaskRect> = emptyList()
 
   // ~5 Hz — comfortably ahead of the engine's ~3 fps capture, far below the
   // render rate.
@@ -122,6 +125,13 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
       }
       "occludeSensitiveScreen" -> {
         Replay.occludeSensitiveScreen(call.argument("occlude") ?: false); result.success(null)
+      }
+      "setMaskStyle" -> {
+        // Global default style for bulk/whole-screen occlusion + any ReplayMask
+        // that doesn't carry its own style. Per-region styles still override
+        // via the pulled rects.
+        Replay.setMaskStyle(ReplayMaskStyle.from(call.argument<Int>("style") ?: 0))
+        result.success(null)
       }
       "setAutomaticScreenNameTagging" -> {
         Replay.setAutomaticScreenNameTagging(call.argument("enabled") ?: true); result.success(null)
@@ -220,10 +230,11 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     cachedRects = emptyList()
   }
 
-  /** Convert Dart's logical-pixel bounds to decor-view device pixels. */
-  private fun toRects(response: Any?): List<Rect> {
+  /** Convert Dart's logical-pixel bounds to decor-view device pixels, keeping
+   *  each rect's render style (blur = 0, overlay = 1). */
+  private fun toRects(response: Any?): List<MaskRect> {
     val list = response as? List<*> ?: return emptyList()
-    val out = ArrayList<Rect>(list.size)
+    val out = ArrayList<MaskRect>(list.size)
     for (item in list) {
       val m = item as? Map<*, *> ?: continue
       val dpr = (m["dpr"] as? Number)?.toDouble() ?: 1.0
@@ -232,12 +243,16 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
       val right = (m["right"] as? Number)?.toDouble() ?: continue
       val bottom = (m["bottom"] as? Number)?.toDouble() ?: continue
       if (right <= left || bottom <= top) continue
+      val style = ReplayMaskStyle.from((m["style"] as? Number)?.toInt() ?: 0)
       out.add(
-        Rect(
-          (left * dpr).toInt(),
-          (top * dpr).toInt(),
-          (right * dpr).toInt(),
-          (bottom * dpr).toInt(),
+        MaskRect(
+          Rect(
+            (left * dpr).toInt(),
+            (top * dpr).toInt(),
+            (right * dpr).toInt(),
+            (bottom * dpr).toInt(),
+          ),
+          style,
         ),
       )
     }

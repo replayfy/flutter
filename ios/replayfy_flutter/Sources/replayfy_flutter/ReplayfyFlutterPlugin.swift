@@ -18,10 +18,11 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
   private var occlusionChannel: FlutterMethodChannel?
   private var pullTimer: Timer?
 
-  // Latest rects pulled from Dart, in window points. Read on the main thread
-  // by the engine's capture loop; written on the main thread by the pull
-  // callback — so no locking is required.
-  private var cachedRects: [CGRect] = []
+  // Latest rects pulled from Dart, in window points, each carrying its own
+  // render style (blur / overlay). Read on the main thread by the engine's
+  // capture loop; written on the main thread by the pull callback — so no
+  // locking is required.
+  private var cachedRects: [MaskRect] = []
 
   // ~5 Hz keeps the cache comfortably ahead of the engine's ~3 fps capture
   // while staying far below Flutter's 60–120 fps render rate. Pull (not push)
@@ -111,6 +112,13 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "occludeSensitiveScreen":
       Replay.occludeSensitiveScreen(args["occlude"] as? Bool ?? false); result(nil)
+    case "setMaskStyle":
+      // Global default style for bulk/whole-screen occlusion + any ReplayMask
+      // that doesn't carry its own style. Per-region styles still override via
+      // the pulled rects above.
+      let style = ReplayMaskStyle(rawValue: args["style"] as? Int ?? 0) ?? .blur
+      Replay.setMaskStyle(style)
+      result(nil)
     case "setAutomaticScreenNameTagging":
       Replay.setAutomaticScreenNameTagging(args["enabled"] as? Bool ?? true)
       result(nil)
@@ -196,6 +204,8 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       }
       // Flutter logical pixels == UIKit points on iOS, so the bounds map
       // straight to a CGRect in window points (the engine masks in points).
+      // Each rect carries its own style index (blur = 0, overlay = 1); the
+      // engine renders per-rect, so a screen can mix blurred + overlaid masks.
       self.cachedRects = list.compactMap { item in
         guard
           let left = (item["left"] as? NSNumber)?.doubleValue,
@@ -204,7 +214,9 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
           let bottom = (item["bottom"] as? NSNumber)?.doubleValue,
           right > left, bottom > top
         else { return nil }
-        return CGRect(x: left, y: top, width: right - left, height: bottom - top)
+        let rect = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+        let style = ReplayMaskStyle(rawValue: (item["style"] as? NSNumber)?.intValue ?? 0) ?? .blur
+        return MaskRect(rect: rect, style: style)
       }
     }
   }
