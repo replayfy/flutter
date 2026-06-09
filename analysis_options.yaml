@@ -1,0 +1,18 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
+  errors:
+    # Privacy must never silently degrade to a no-op — treat dead masking
+    # code paths as errors, not hints.
+    unused_element: warning
+    dead_code: error
+
+linter:
+  rules:
+    prefer_final_locals: true
+    prefer_const_constructors: true
+    avoid_print: true
+    public_member_api_docs: false

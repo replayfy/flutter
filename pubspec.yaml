@@ -1,0 +1,32 @@
+name: replayfy_flutter
+description: Replayfy session replay & product analytics for Flutter apps (iOS + Android).
+version: 0.0.1
+homepage: https://replayfy.io
+repository: https://github.com/replayfy/flutter
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+# This package is a federated-style plugin that wraps the native Replayfy
+# SDKs. The native engines (Replay pod / com.replayfy:android-sdk) do the
+# real recording — screenshots, taps, performance, crashes. The Dart layer
+# contributes the public API, ReplayConfig, and the pull-based masking
+# (<ReplayMask> + warm rect cache that native pulls at capture rate).
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.replayfy.flutter
+        pluginClass: ReplayfyFlutterPlugin
+      ios:
+        pluginClass: ReplayfyFlutterPlugin

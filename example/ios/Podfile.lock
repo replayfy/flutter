@@ -1,0 +1,23 @@
+PODS:
+  - Flutter (1.0.0)
+  - Replay (0.0.1):
+    - Replay/Core (= 0.0.1)
+  - Replay/Core (0.0.1)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - Replay (from `../../../replay-ios-sdk`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  Replay:
+    :path: "../../../replay-ios-sdk"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Replay: 9eddb7081630b4aaac78b46444acf53ab2ab2d00
+
+PODFILE CHECKSUM: 2c07efa6a4bccfc6c90d4a4fdc94fa39f285e43e
+
+COCOAPODS: 1.16.2
