@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -141,6 +142,36 @@ void main() {
       expect(h, closeTo(40, 2));
       expect(r['dpr'], greaterThan(0));
       expect(r['id'], isA<int>());
+      // Default style is blur (index 0).
+      expect(r['style'], ReplayMaskStyle.blur.index);
+    });
+
+    testWidgets('per-region maskStyle propagates to the pulled rect',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: ReplayMask(
+                maskStyle: ReplayMaskStyle.overlay,
+                child: SizedBox(
+                  width: 80,
+                  height: 30,
+                  child: ColoredBox(color: Color(0xFF445566)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+
+      final List<Map<String, dynamic>> rects =
+          OcclusionRegistry.instance.currentRects();
+      expect(rects, isNotEmpty);
+      // overlay == index 1; native rebuilds the enum from this.
+      expect(rects.first['style'], ReplayMaskStyle.overlay.index);
     });
 
     testWidgets('native pull over the occlusion channel returns the cache',
@@ -219,6 +250,34 @@ void main() {
           a['properties'] as Map<dynamic, dynamic>;
       expect(props['message'], contains('boom'));
       expect(props['fatal'], false);
+    });
+
+    test('an uncaught async error is forwarded as a fatal \$exception and chains',
+        () {
+      final original = PlatformDispatcher.instance.onError;
+      bool chained = false;
+      PlatformDispatcher.instance.onError = (Object _, StackTrace __) {
+        chained = true;
+        return true;
+      };
+
+      ReplayErrorCapture.debugReset();
+      ReplayErrorCapture.install();
+      final handler = PlatformDispatcher.instance.onError!;
+      handler(StateError('async-boom'), StackTrace.current);
+
+      PlatformDispatcher.instance.onError = original; // restore before asserting
+
+      expect(chained, isTrue, reason: 'previous onError must still be called');
+      final MethodCall ev =
+          calls.firstWhere((MethodCall c) => c.method == 'track');
+      final Map<dynamic, dynamic> a = ev.arguments as Map<dynamic, dynamic>;
+      expect(a['name'], r'$exception');
+      final Map<dynamic, dynamic> props =
+          a['properties'] as Map<dynamic, dynamic>;
+      expect(props['message'], contains('async-boom'));
+      expect(props['fatal'], true);
+      expect(props['stack'], isNotNull);
     });
   });
 

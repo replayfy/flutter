@@ -24,6 +24,26 @@ void main() {
       maskAllInputs: false,
     ));
 
+    // Headless crash-test hook. Run with
+    //   flutter run --dart-define=REPLAY_AUTOCRASH=dart_fatal
+    // to fire a crash a few seconds after start (enough for the session to
+    // register) without needing a UI tap. Values: dart_fatal | dart_handled.
+    const String autoCrash = String.fromEnvironment('REPLAY_AUTOCRASH');
+    if (autoCrash.isNotEmpty) {
+      Future<void>.delayed(const Duration(seconds: 6), () {
+        debugPrint('[replayfy] auto-crash: $autoCrash');
+        switch (autoCrash) {
+          case 'dart_handled':
+            // → FlutterError.onError → $exception (fatal:false)
+            throw StateError('autocrash: handled dart error');
+          case 'dart_fatal':
+          default:
+            // → PlatformDispatcher.onError → $exception (fatal:true)
+            throw StateError('autocrash: fatal dart error');
+        }
+      });
+    }
+
     runApp(const ExampleApp());
   });
 }
@@ -94,16 +114,31 @@ class _HomeScreenState extends State<HomeScreen> {
             Text('Session: ${_sessionId ?? "—"}'),
             const SizedBox(height: 24),
 
-            // Anything inside <ReplayMask> is blurred + striped in playback.
-            // Bounds are tracked in Dart and pulled by the native engine.
+            // Anything inside <ReplayMask> is masked in playback per its
+            // style — blur (default), overlay (solid box), or pixelate
+            // (mosaic). Bounds are tracked in Dart and pulled by the engine.
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(16),
-                child: ReplayMask(
-                  child: Text(
-                    '4242 4242 4242 4242',
-                    style: TextStyle(fontSize: 22, letterSpacing: 2),
-                  ),
+                child: Column(
+                  children: <Widget>[
+                    ReplayMask(
+                      child: Text('blur  4242 4242 4242 4242',
+                          style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                    ),
+                    SizedBox(height: 8),
+                    ReplayMask(
+                      maskStyle: ReplayMaskStyle.overlay,
+                      child: Text('overlay  012-34-5678',
+                          style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                    ),
+                    SizedBox(height: 8),
+                    ReplayMask(
+                      maskStyle: ReplayMaskStyle.pixelate,
+                      child: Text('pixelate  hunter2',
+                          style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -125,9 +160,20 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             OutlinedButton(
               // A throw in a callback is reported via FlutterError.onError,
-              // which ReplayErrorCapture forwards as a $exception event.
+              // which ReplayErrorCapture forwards as a $exception (fatal:false).
               onPressed: () => throw StateError('demo: handled error'),
               child: const Text('Trigger handled error'),
+            ),
+            OutlinedButton(
+              // An uncaught async error escapes to PlatformDispatcher.onError,
+              // forwarded as a $exception (fatal:true) — the Dart analogue of
+              // an unhandled crash. The app keeps running (the engine catches
+              // native signals separately).
+              onPressed: () => Future<void>.delayed(
+                Duration.zero,
+                () => throw StateError('demo: fatal async error'),
+              ),
+              child: const Text('Trigger fatal async error'),
             ),
             TextButton(
               onPressed: () async {

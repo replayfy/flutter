@@ -18,11 +18,13 @@ import 'dart:async';
 import 'src/capture/console.dart';
 import 'src/capture/errors.dart';
 import 'src/capture/network.dart';
+import 'src/privacy/occlusion_models.dart';
 import 'src/privacy/occlusion_registry.dart';
 import 'src/replay_channel.dart';
 import 'src/replay_config.dart';
 
 export 'src/replay_config.dart' show ReplayConfig;
+export 'src/privacy/occlusion_models.dart' show ReplayMaskStyle;
 export 'src/privacy/replay_mask.dart' show ReplayMask;
 export 'src/replay_navigator_observer.dart' show ReplayNavigatorObserver;
 
@@ -200,6 +202,15 @@ class Replay {
   /// Occlude the entire screen (e.g. a sensitive flow).
   static Future<void> occludeSensitiveScreen(bool occlude) =>
       _ch.invoke('occludeSensitiveScreen', <String, dynamic>{'occlude': occlude});
+
+  /// Set the global mask render style — [ReplayMaskStyle.blur] (default),
+  /// [ReplayMaskStyle.overlay] (a solid box), or [ReplayMaskStyle.pixelate]
+  /// (coarse mosaic blocks). Applies to bulk-occluded text, whole-screen
+  /// occlusion, and any [ReplayMask] that doesn't set its own `maskStyle`.
+  /// Per-region styles (passed on the [ReplayMask] widget) ride the occlusion
+  /// pull channel and override this for that region.
+  static Future<void> setMaskStyle(ReplayMaskStyle style) =>
+      _ch.invoke('setMaskStyle', <String, dynamic>{'style': style.index});
 
   // ── Configuration ──────────────────────────────────────────────────────
 

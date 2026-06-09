@@ -14,6 +14,9 @@ class _Entry {
   double dpr = 1.0;
   int lastUpdatedMs = 0;
   bool attached = false;
+  // Frozen alongside the bounds so a detached entry keeps the SAME render
+  // style through its grace window (the reporter is gone by then).
+  ReplayMaskStyle style = ReplayMaskStyle.blur;
 }
 
 /// Holds the live set of [ReplayMask] regions and serves them to the native
@@ -70,6 +73,7 @@ class OcclusionRegistry with WidgetsBindingObserver {
       ..reporter = null
       ..lastBounds = box.unionOfRecentBounds() ?? box.currentBounds
       ..dpr = box.devicePixelRatio
+      ..style = box.maskStyle
       ..lastUpdatedMs = DateTime.now().millisecondsSinceEpoch;
   }
 
@@ -92,6 +96,7 @@ class OcclusionRegistry with WidgetsBindingObserver {
     e
       ..lastBounds = box.unionOfRecentBounds() ?? box.currentBounds
       ..dpr = box.devicePixelRatio
+      ..style = box.maskStyle
       ..lastUpdatedMs = DateTime.now().millisecondsSinceEpoch;
   }
 
@@ -135,6 +140,8 @@ class OcclusionRegistry with WidgetsBindingObserver {
         'right': bounds.right,
         'bottom': bounds.bottom,
         'dpr': e.dpr,
+        // Native rebuilds the enum from this index (blur = 0, overlay = 1).
+        'style': e.style.index,
       });
     }
     return out;
