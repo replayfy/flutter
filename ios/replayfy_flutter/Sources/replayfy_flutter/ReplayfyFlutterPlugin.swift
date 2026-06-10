@@ -45,6 +45,16 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
     case "start":
       start(args)
       result(nil)
+    case "reportTap":
+      // Dart-side gesture capture reports the real tapped-widget label here
+      // (the native FlutterView hit-test can't see Flutter widgets).
+      Replay.reportInteraction(
+        kind: args["kind"] as? String ?? "tap",
+        label: args["label"] as? String ?? "",
+        x: args["x"] as? Int ?? 0,
+        y: args["y"] as? Int ?? 0,
+        direction: args["direction"] as? String ?? "")
+      result(nil)
     case "stop":
       Replay.stop()
       stopPull()
@@ -161,7 +171,10 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       captureErrors: cfg["recordErrors"] as? Bool ?? true,
       captureSnapshotPixels: cfg["recordScreen"] as? Bool ?? true,
       autoScreenName: cfg["autoScreenName"] as? Bool ?? true,
-      useRemoteConfig: cfg["useRemoteConfig"] as? Bool ?? true
+      useRemoteConfig: cfg["useRemoteConfig"] as? Bool ?? true,
+      // Dart owns tap capture (it knows the real widget label; the native
+      // view-tree only sees the one FlutterView), reported via reportTap.
+      captureTouch: false
     ))
 
     if cfg["maskAllInputs"] as? Bool == true {

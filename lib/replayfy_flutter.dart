@@ -17,6 +17,7 @@ import 'dart:async';
 
 import 'src/capture/console.dart';
 import 'src/capture/errors.dart';
+import 'src/capture/gestures.dart';
 import 'src/capture/network.dart';
 import 'src/privacy/occlusion_models.dart';
 import 'src/privacy/occlusion_registry.dart';
@@ -56,6 +57,11 @@ class Replay {
     }
     // Console capture rides Replay.runZoned's print hook; this just arms it.
     ReplayConsoleCapture.enabled = config.recordConsole;
+    // Dart-side gesture capture: reports the ACTUAL tapped widget's label
+    // (the native engine only sees the single FlutterView). The native touch
+    // capture is disabled for Flutter sessions in the iOS/Android plugins, so
+    // a touch is never recorded twice.
+    ReplayGestureCapture.install();
     return _ch.invoke('start', <String, dynamic>{
       'projectKey': config.projectKey,
       'ingestUrl': config.ingestUrl,
