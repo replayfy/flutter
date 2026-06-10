@@ -77,6 +77,8 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
           direction = call.argument<String>("direction") ?: "")
         result.success(null)
       }
+      "occludeAllTextView" -> { Replay.occludeAllTextView(call.argument<Boolean>("occlude") ?: false); result.success(null) }
+      "setMultiSessionRecord" -> { Replay.setMultiSessionRecord(call.argument<Boolean>("enabled") ?: false); result.success(null) }
       "stop" -> { Replay.stop(); stopPull(); result.success(null) }
       "isRecording" -> result.success(Replay.isRecording())
       "currentSessionId" -> result.success(Replay.currentSessionId() ?: "")

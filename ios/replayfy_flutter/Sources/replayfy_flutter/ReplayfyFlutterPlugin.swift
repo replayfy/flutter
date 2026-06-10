@@ -55,6 +55,10 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
         y: args["y"] as? Int ?? 0,
         direction: args["direction"] as? String ?? "")
       result(nil)
+    case "occludeAllTextView":
+      Replay.occludeAllTextView(args["occlude"] as? Bool ?? false); result(nil)
+    case "setMultiSessionRecord":
+      Replay.setMultiSessionRecord(args["enabled"] as? Bool ?? false); result(nil)
     case "stop":
       Replay.stop()
       stopPull()

@@ -209,6 +209,24 @@ class Replay {
   static Future<void> occludeSensitiveScreen(bool occlude) =>
       _ch.invoke('occludeSensitiveScreen', <String, dynamic>{'occlude': occlude});
 
+  /// Occlude all multi-line text views in screenshots (parity with the
+  /// native SDKs' `occludeAllTextView`; complements [occludeAllTextFields]).
+  static Future<void> occludeAllTextView(bool occlude) =>
+      _ch.invoke('occludeAllTextView', <String, dynamic>{'occlude': occlude});
+
+  /// Record multiple sessions per app launch instead of a single one.
+  static Future<void> setMultiSessionRecord(bool enabled) =>
+      _ch.invoke('setMultiSessionRecord', <String, dynamic>{'enabled': enabled});
+
+  /// Bridge a customer log line into the `$console` event stream. (Flutter's
+  /// native console capture is off — Dart owns it — so this routes through the
+  /// Dart `track` path rather than the native `log`.)
+  static Future<void> log(String message, {String level = 'log'}) =>
+      _ch.invoke('track', <String, dynamic>{
+        'name': r'$console',
+        'properties': <String, dynamic>{'level': level, 'message': message},
+      });
+
   /// Set the global mask render style — [ReplayMaskStyle.blur] (default),
   /// [ReplayMaskStyle.overlay] (a solid box), or [ReplayMaskStyle.pixelate]
   /// (coarse mosaic blocks). Applies to bulk-occluded text, whole-screen
