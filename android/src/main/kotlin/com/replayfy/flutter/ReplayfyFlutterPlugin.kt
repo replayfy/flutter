@@ -66,6 +66,17 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
   override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
     when (call.method) {
       "start" -> { start(call); result.success(null) }
+      "reportTap" -> {
+        // Dart-side gesture capture reports the real tapped-widget label here
+        // (the native FlutterView tracker can't see Flutter widgets).
+        Replay.reportInteraction(
+          kind = call.argument<String>("kind") ?: "tap",
+          label = call.argument<String>("label") ?: "",
+          x = call.argument<Int>("x") ?: 0,
+          y = call.argument<Int>("y") ?: 0,
+          direction = call.argument<String>("direction") ?: "")
+        result.success(null)
+      }
       "stop" -> { Replay.stop(); stopPull(); result.success(null) }
       "isRecording" -> result.success(Replay.isRecording())
       "currentSessionId" -> result.success(Replay.currentSessionId() ?: "")
@@ -177,6 +188,9 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         captureSnapshotPixels = cfg.optBoolean("recordScreen", true),
         autoScreenName = cfg.optBoolean("autoScreenName", true),
         useRemoteConfig = cfg.optBoolean("useRemoteConfig", true),
+        // Dart owns tap capture (it knows the real widget label; the native
+        // view tree only sees the one FlutterView), reported via reportTap.
+        captureTouch = false,
       ),
     )
 
