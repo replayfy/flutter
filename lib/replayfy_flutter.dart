@@ -218,6 +218,10 @@ class Replay {
   static Future<void> setMultiSessionRecord(bool enabled) =>
       _ch.invoke('setMultiSessionRecord', <String, dynamic>{'enabled': enabled});
 
+  /// Allow a brief switch to another app without ending the session.
+  static Future<void> allowShortBreakForAnotherApp(bool allow) =>
+      _ch.invoke('allowShortBreak', <String, dynamic>{'allow': allow});
+
   /// Bridge a customer log line into the `$console` event stream. (Flutter's
   /// native console capture is off — Dart owns it — so this routes through the
   /// Dart `track` path rather than the native `log`.)

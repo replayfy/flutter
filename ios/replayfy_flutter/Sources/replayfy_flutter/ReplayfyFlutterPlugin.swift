@@ -59,6 +59,8 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       Replay.occludeAllTextView(args["occlude"] as? Bool ?? false); result(nil)
     case "setMultiSessionRecord":
       Replay.setMultiSessionRecord(args["enabled"] as? Bool ?? false); result(nil)
+    case "allowShortBreak":
+      Replay.allowShortBreakForAnotherApp(args["allow"] as? Bool ?? false); result(nil)
     case "stop":
       Replay.stop()
       stopPull()
