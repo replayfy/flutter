@@ -167,6 +167,19 @@ class Replay {
     });
   }
 
+  /// Record a text input's value on the session timeline. Flutter manages its
+  /// own text widgets (there's no native field for the engine to observe), so
+  /// call this from your field's `onSubmitted`/`onEditingComplete`. Pass
+  /// [masked] true for sensitive fields — the value is dropped (recorded as
+  /// "***") and never leaves the device.
+  static Future<void> trackInput(String label, String value, {bool masked = false}) {
+    return _ch.invoke('trackInput', <String, dynamic>{
+      'label': label,
+      'value': value,
+      'masked': masked,
+    });
+  }
+
   /// Tag the current screen by name (also done automatically when
   /// [ReplayConfig.autoScreenName] is on).
   static Future<void> tagScreenName(String name) =>

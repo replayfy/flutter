@@ -117,6 +117,14 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         Replay.track(call.argument("name") ?: "", props(call.argument("properties")))
         result.success(null)
       }
+      "trackInput" -> {
+        Replay.trackInput(
+          call.argument("label") ?: "",
+          call.argument("value") ?: "",
+          call.argument<Boolean>("masked") ?: false,
+        )
+        result.success(null)
+      }
       "tagScreenName" -> { Replay.tagScreenName(call.argument("name") ?: ""); result.success(null) }
       "addTagWithProperties" -> {
         Replay.addTagWithProperties(call.argument("name") ?: "", props(call.argument("properties")))

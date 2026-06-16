@@ -87,6 +87,11 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       Replay.track(args["name"] as? String ?? "",
                    properties: args["properties"] as? [String: Any])
       result(nil)
+    case "trackInput":
+      Replay.trackInput(label: args["label"] as? String ?? "",
+                        value: args["value"] as? String ?? "",
+                        masked: args["masked"] as? Bool ?? false)
+      result(nil)
     case "tagScreenName":
       Replay.tagScreenName(args["name"] as? String ?? ""); result(nil)
     case "addTagWithProperties":
