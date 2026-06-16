@@ -27,7 +27,9 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
   // ~5 Hz keeps the cache comfortably ahead of the engine's ~3 fps capture
   // while staying far below Flutter's 60–120 fps render rate. Pull (not push)
   // is the whole point: IPC scales with capture, not with rebuilds.
-  private static let pullInterval: TimeInterval = 0.2
+  // Pull faster than the native capture cadence (~2 fps) so the mask doesn't
+  // visibly trail content under fast scroll; the payload is a handful of rects.
+  private static let pullInterval: TimeInterval = 0.1
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = ReplayfyFlutterPlugin()
@@ -204,6 +206,11 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
     ReplayCore.shared.externalPrivacyRectsProvider = { [weak self] in
       self?.cachedRects ?? []
     }
+
+    // Prime the cache immediately so the very first frames are masked — without
+    // this the cache is empty until the first timer tick (the cold-start gap
+    // where sensitive content briefly shipped unmasked).
+    pullRects()
 
     pullTimer?.invalidate()
     pullTimer = Timer.scheduledTimer(
