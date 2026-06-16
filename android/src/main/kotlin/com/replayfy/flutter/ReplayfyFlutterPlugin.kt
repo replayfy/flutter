@@ -77,6 +77,25 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
           direction = call.argument<String>("direction") ?: "")
         result.success(null)
       }
+      "reportFrame" -> {
+        // Dart captures frames via a root RepaintBoundary (native PixelCopy
+        // can't read Flutter's SurfaceView); feed them into the frames archive.
+        val bytes = call.argument<ByteArray>("bytes")
+        val ts = call.argument<Number>("ts")?.toLong() ?: System.currentTimeMillis()
+        // Occlusion rects (developer ReplayMask bounds) in PNG-pixel coords;
+        // the engine's encoder masks them per style (blur/overlay/pixelate).
+        val rects = (call.argument<List<Map<String, Any>>>("rects") ?: emptyList()).mapNotNull { m ->
+          try {
+            com.replayfy.android.MaskRect(
+              android.graphics.Rect(
+                (m["left"] as Number).toInt(), (m["top"] as Number).toInt(),
+                (m["right"] as Number).toInt(), (m["bottom"] as Number).toInt()),
+              com.replayfy.android.ReplayMaskStyle.from((m["style"] as? Number)?.toInt() ?: 0))
+          } catch (e: Throwable) { null }
+        }
+        if (bytes != null) Replay.reportFrame(bytes, ts, rects)
+        result.success(null)
+      }
       "occludeAllTextView" -> { Replay.occludeAllTextView(call.argument<Boolean>("occlude") ?: false); result.success(null) }
       "setMultiSessionRecord" -> { Replay.setMultiSessionRecord(call.argument<Boolean>("enabled") ?: false); result.success(null) }
       "allowShortBreak" -> { Replay.allowShortBreakForAnotherApp(call.argument<Boolean>("allow") ?: false); result.success(null) }
@@ -188,7 +207,9 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         captureConsole = false,
         captureNetwork = false,
         captureErrors = cfg.optBoolean("recordErrors", true),
-        captureSnapshotPixels = cfg.optBoolean("recordScreen", true),
+        // Dart owns frame capture on Android (native PixelCopy can't read
+        // Flutter's SurfaceView → black frames). Frames arrive via reportFrame.
+        captureSnapshotPixels = false,
         autoScreenName = cfg.optBoolean("autoScreenName", true),
         useRemoteConfig = cfg.optBoolean("useRemoteConfig", true),
         // Dart owns tap capture (it knows the real widget label; the native

@@ -16,10 +16,13 @@ import '../replay_channel.dart';
 /// method / url / status / duration (and redacted headers) once the response
 /// arrives.
 ///
-/// Safety: this is metadata-only — it never reads the response body stream, so
-/// it cannot truncate or corrupt the host app's HTTP. It's also opt-in
-/// (`ReplayConfig.recordNetwork`, default off). Requests to the ingest host
-/// are skipped so the SDK never records its own uploads.
+/// Safety: the response body is teed through a [StreamView] pass-through (see
+/// [_RecordingHttpClientResponse]) — a capped copy is retained while every byte
+/// flows to the host unchanged, so it cannot truncate or corrupt the host app's
+/// HTTP. Body capture is gated by the workspace's `captureNetworkBodies` toggle
+/// on the native side. It's opt-in (`ReplayConfig.recordNetwork`, default off),
+/// and requests to the ingest host are skipped so the SDK never records its own
+/// uploads.
 class ReplayNetworkCapture {
   ReplayNetworkCapture._();
 
@@ -69,8 +72,12 @@ class ReplayNetworkCapture {
     required int durationMs,
     HttpHeaders? requestHeaders,
     HttpHeaders? responseHeaders,
+    String? responseBody,
   }) {
     // Fire-and-forget; never let recording throw into the caller's request.
+    // The body is gated by the workspace's `captureNetworkBodies` toggle on the
+    // native side (ReplayCore.sendNetwork), so it's dropped before leaving the
+    // device when disabled.
     ReplayChannel.instance.invoke('recordNetwork', <String, dynamic>{
       'url': url.toString(),
       'method': method.toUpperCase(),
@@ -79,6 +86,7 @@ class ReplayNetworkCapture {
       }),
       'response': jsonEncode(<String, dynamic>{
         'headers': redactHeaders(responseHeaders),
+        'body': responseBody,
       }),
       'status': status,
       'durationMs': durationMs < 0 ? 0 : durationMs,
@@ -263,15 +271,12 @@ class _RecordingHttpClientRequest implements HttpClientRequest {
     final HttpHeaders requestHeaders = _inner.headers;
     return _inner.close().then((HttpClientResponse response) {
       sw.stop();
-      ReplayNetworkCapture.report(
-        method: _method,
-        url: _url,
-        status: response.statusCode,
-        durationMs: sw.elapsedMilliseconds,
-        requestHeaders: requestHeaders,
-        responseHeaders: response.headers,
-      );
-      return response; // untouched — host owns the body stream
+      // Wrap the response so we can tee a capped copy of the body as the host
+      // reads it, then report once the stream completes. StreamView delegates
+      // every Stream method to our teeing stream, so the host's consumption
+      // (listen / transform / toList / pipe) is never altered or corrupted.
+      return _RecordingHttpClientResponse(
+        response, _method, _url, requestHeaders, sw.elapsedMilliseconds);
     });
   }
 
@@ -352,4 +357,102 @@ class _RecordingHttpClientRequest implements HttpClientRequest {
 
   @override
   void writeln([Object? object = '']) => _inner.writeln(object);
+}
+
+/// Wraps an [HttpClientResponse] and tees a capped copy of the body as the host
+/// reads it, reporting the full network record once the stream completes.
+///
+/// Extends [StreamView] so every `Stream` method (listen / transform / toList /
+/// pipe / cast …) is delegated to the teeing stream — the host's body
+/// consumption is byte-for-byte identical to the unwrapped response, and the
+/// `finally` guarantees a report even if the host cancels mid-stream.
+class _RecordingHttpClientResponse extends StreamView<List<int>>
+    implements HttpClientResponse {
+  _RecordingHttpClientResponse(
+    this._inner,
+    String method,
+    Uri url,
+    HttpHeaders requestHeaders,
+    int durationMs,
+  ) : super(_tee(_inner, method, url, requestHeaders, durationMs));
+
+  final HttpClientResponse _inner;
+
+  /// Max body bytes retained — keeps memory bounded on large downloads.
+  static const int _cap = 8192;
+
+  static Stream<List<int>> _tee(
+    HttpClientResponse inner,
+    String method,
+    Uri url,
+    HttpHeaders requestHeaders,
+    int durationMs,
+  ) async* {
+    final List<int> bytes = <int>[];
+    var reported = false;
+    void report() {
+      if (reported) return;
+      reported = true;
+      String? body;
+      try {
+        body = utf8.decode(bytes, allowMalformed: true);
+      } catch (_) {
+        body = null;
+      }
+      ReplayNetworkCapture.report(
+        method: method,
+        url: url,
+        status: inner.statusCode,
+        durationMs: durationMs,
+        requestHeaders: requestHeaders,
+        responseHeaders: inner.headers,
+        responseBody: body,
+      );
+    }
+
+    try {
+      await for (final List<int> chunk in inner) {
+        final int remaining = _cap - bytes.length;
+        if (remaining > 0) {
+          bytes.addAll(
+              chunk.length <= remaining ? chunk : chunk.sublist(0, remaining));
+        }
+        yield chunk;
+      }
+    } finally {
+      // Fires on normal completion, error, or early cancellation by the host.
+      report();
+    }
+  }
+
+  // ── HttpClientResponse surface → inner ───────────────────────────────────
+  @override
+  int get statusCode => _inner.statusCode;
+  @override
+  String get reasonPhrase => _inner.reasonPhrase;
+  @override
+  int get contentLength => _inner.contentLength;
+  @override
+  HttpHeaders get headers => _inner.headers;
+  @override
+  bool get isRedirect => _inner.isRedirect;
+  @override
+  bool get persistentConnection => _inner.persistentConnection;
+  @override
+  List<RedirectInfo> get redirects => _inner.redirects;
+  @override
+  List<Cookie> get cookies => _inner.cookies;
+  @override
+  X509Certificate? get certificate => _inner.certificate;
+  @override
+  HttpConnectionInfo? get connectionInfo => _inner.connectionInfo;
+  @override
+  HttpClientResponseCompressionState get compressionState =>
+      _inner.compressionState;
+  @override
+  Future<Socket> detachSocket() => _inner.detachSocket();
+  @override
+  Future<HttpClientResponse> redirect(
+          [String? method, Uri? url, bool? followLoops]) =>
+      _inner.redirect(method, url, followLoops);
 }
