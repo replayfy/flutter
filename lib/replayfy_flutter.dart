@@ -15,7 +15,6 @@ library replayfy_flutter;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/widgets.dart';
 
 import 'src/capture/console.dart';
@@ -66,13 +65,13 @@ class Replay {
     // capture is disabled for Flutter sessions in the iOS/Android plugins, so
     // a touch is never recorded twice.
     ReplayGestureCapture.install();
-    // Android's native screenshotter can't read Flutter's SurfaceView (black
-    // frames), so capture frames Dart-side there via the root RepaintBoundary.
-    // iOS keeps its native capture — it's lighter (no GPU readback / PNG
-    // re-encode) and its snapshot reads the Metal layer fine. Requires the app
-    // to use `MaterialApp(builder: Replay.appBuilder)` for the Android path.
-    if (config.recordScreen &&
-        defaultTargetPlatform == TargetPlatform.android) {
+    // Neither native screenshotter can read Flutter's surface (Android's
+    // SurfaceView → black frames; iOS would need a separate rect pull that
+    // trailed scroll), so capture frames Dart-side via the root
+    // RepaintBoundary on BOTH platforms and ship each frame with its occlusion
+    // rects in the same payload — no poll, no mask lag. Requires the app to use
+    // `MaterialApp(builder: Replay.appBuilder)`.
+    if (config.recordScreen) {
       ReplayFrameCapture.instance.install();
     }
     return _ch.invoke('start', <String, dynamic>{
@@ -83,8 +82,8 @@ class Replay {
   }
 
   /// App builder that injects the capture `RepaintBoundary` used for Dart-side
-  /// frame capture (required on Android). Use as
-  /// `MaterialApp(builder: Replay.appBuilder, ...)`. Harmless on iOS.
+  /// frame capture (required on both iOS + Android). Use as
+  /// `MaterialApp(builder: Replay.appBuilder, ...)`.
   static Widget appBuilder(BuildContext context, Widget? child) =>
       ReplayFrameCapture.instance.wrap(context, child);
 

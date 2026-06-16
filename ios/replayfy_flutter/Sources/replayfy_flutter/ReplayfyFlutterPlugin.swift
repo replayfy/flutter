@@ -3,42 +3,18 @@ import Replay
 import UIKit
 
 /// Flutter bridge for Replayfy on iOS. Thin forwarder onto the native
-/// `Replay` SDK (which drives the live recording engine). The engine handles
-/// screenshots, taps, performance, and crashes itself; this plugin forwards
-/// the public API and drives the **pull-based masking**:
-///
-///  1. The Dart side keeps a warm cache of `<ReplayMask>` rects.
-///  2. Here, a lightweight timer pulls that cache over the occlusion channel
-///     at roughly capture rate and stores it (window points — Flutter's
-///     logical pixels equal UIKit points on iOS, so no scaling).
-///  3. We compose the engine's `privacyRectsProvider` so each screenshot
-///     reads the freshest pulled rects synchronously, with zero IPC on the
-///     capture path.
+/// `Replay` SDK (which drives the live recording engine for taps, performance,
+/// and crashes). The native side can't read Flutter's surface, so the Dart
+/// layer captures frames (`RepaintBoundary.toImage`) and ships each one — with
+/// its occlusion rects, in the same frame — over the `reportFrame` channel; we
+/// mask + enqueue via the engine's `submitFrame`. Native screenshotting stays
+/// off, and because the rects arrive with the frame there's no poll/mask-lag.
 public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
-  private var occlusionChannel: FlutterMethodChannel?
-  private var pullTimer: Timer?
-
-  // Latest rects pulled from Dart, in window points, each carrying its own
-  // render style (blur / overlay). Read on the main thread by the engine's
-  // capture loop; written on the main thread by the pull callback — so no
-  // locking is required.
-  private var cachedRects: [MaskRect] = []
-
-  // ~5 Hz keeps the cache comfortably ahead of the engine's ~3 fps capture
-  // while staying far below Flutter's 60–120 fps render rate. Pull (not push)
-  // is the whole point: IPC scales with capture, not with rebuilds.
-  // Pull faster than the native capture cadence (~2 fps) so the mask doesn't
-  // visibly trail content under fast scroll; the payload is a handful of rects.
-  private static let pullInterval: TimeInterval = 0.1
-
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = ReplayfyFlutterPlugin()
     let command = FlutterMethodChannel(
       name: "replayfy_flutter", binaryMessenger: registrar.messenger())
     registrar.addMethodCallDelegate(instance, channel: command)
-    instance.occlusionChannel = FlutterMethodChannel(
-      name: "replayfy_flutter/occlusion",
-      binaryMessenger: registrar.messenger())
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -65,7 +41,6 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       Replay.allowShortBreakForAnotherApp(args["allow"] as? Bool ?? false); result(nil)
     case "stop":
       Replay.stop()
-      stopPull()
       result(nil)
     case "isRecording":
       result(Replay.isRecording)
@@ -156,6 +131,26 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       result(Replay.urlForCurrentSession())
     case "urlForCurrentUser":
       result(Replay.urlForCurrentUser())
+    case "reportFrame":
+      // Dart captures each frame (RepaintBoundary.toImage) since native can't
+      // read Flutter's surface, and ships its occlusion rects in the SAME
+      // payload (PNG-pixel coords, each with a style index) — no poll, no lag.
+      guard let data = (args["bytes"] as? FlutterStandardTypedData)?.data else { result(nil); return }
+      var rects: [CGRect] = []
+      var styles: [Int] = []
+      for r in (args["rects"] as? [[String: Any]] ?? []) {
+        guard
+          let left = (r["left"] as? NSNumber)?.doubleValue,
+          let top = (r["top"] as? NSNumber)?.doubleValue,
+          let right = (r["right"] as? NSNumber)?.doubleValue,
+          let bottom = (r["bottom"] as? NSNumber)?.doubleValue,
+          right > left, bottom > top
+        else { continue }
+        rects.append(CGRect(x: left, y: top, width: right - left, height: bottom - top))
+        styles.append((r["style"] as? NSNumber)?.intValue ?? 0)
+      }
+      Replay.reportFrame(data, rects: rects, styles: styles)
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -182,7 +177,9 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       captureConsole: false,
       captureNetwork: false,
       captureErrors: cfg["recordErrors"] as? Bool ?? true,
-      captureSnapshotPixels: cfg["recordScreen"] as? Bool ?? true,
+      // Native screenshotting OFF — it can't read Flutter's surface. The Dart
+      // layer captures frames + rects and pushes them via reportFrame.
+      captureSnapshotPixels: false,
       autoScreenName: cfg["autoScreenName"] as? Bool ?? true,
       useRemoteConfig: cfg["useRemoteConfig"] as? Bool ?? true,
       // Dart owns tap capture (it knows the real widget label; the native
@@ -192,63 +189,6 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
 
     if cfg["maskAllInputs"] as? Bool == true {
       ReplayBridge.occludeAllTextFields(true)
-    }
-
-    installOcclusionPull()
-  }
-
-  // ── Pull-based masking ───────────────────────────────────────────────────
-
-  private func installOcclusionPull() {
-    // Feed the engine's host-owned hook — composed into privacyRectsProvider
-    // by start() and never overwritten, so it survives the async /start
-    // response that assigns the registry-backed provider.
-    ReplayCore.shared.externalPrivacyRectsProvider = { [weak self] in
-      self?.cachedRects ?? []
-    }
-
-    // Prime the cache immediately so the very first frames are masked — without
-    // this the cache is empty until the first timer tick (the cold-start gap
-    // where sensitive content briefly shipped unmasked).
-    pullRects()
-
-    pullTimer?.invalidate()
-    pullTimer = Timer.scheduledTimer(
-      withTimeInterval: Self.pullInterval, repeats: true
-    ) { [weak self] _ in
-      self?.pullRects()
-    }
-  }
-
-  private func stopPull() {
-    pullTimer?.invalidate(); pullTimer = nil
-    cachedRects = []
-  }
-
-  private func pullRects() {
-    occlusionChannel?.invokeMethod("requestOcclusionRects", arguments: nil) {
-      [weak self] response in
-      guard let self = self else { return }
-      guard let list = response as? [[String: Any]] else {
-        self.cachedRects = []
-        return
-      }
-      // Flutter logical pixels == UIKit points on iOS, so the bounds map
-      // straight to a CGRect in window points (the engine masks in points).
-      // Each rect carries its own style index (blur = 0, overlay = 1); the
-      // engine renders per-rect, so a screen can mix blurred + overlaid masks.
-      self.cachedRects = list.compactMap { item in
-        guard
-          let left = (item["left"] as? NSNumber)?.doubleValue,
-          let top = (item["top"] as? NSNumber)?.doubleValue,
-          let right = (item["right"] as? NSNumber)?.doubleValue,
-          let bottom = (item["bottom"] as? NSNumber)?.doubleValue,
-          right > left, bottom > top
-        else { return nil }
-        let rect = CGRect(x: left, y: top, width: right - left, height: bottom - top)
-        let style = ReplayMaskStyle(rawValue: (item["style"] as? NSNumber)?.intValue ?? 0) ?? .blur
-        return MaskRect(rect: rect, style: style)
-      }
     }
   }
 
