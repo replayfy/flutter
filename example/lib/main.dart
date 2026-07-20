@@ -56,6 +56,11 @@ class ExampleApp extends StatelessWidget {
     return MaterialApp(
       title: 'Replayfy Flutter',
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
+      // REQUIRED for screen capture: native PixelCopy can't read Flutter's
+      // SurfaceView, so frames are captured Dart-side via a root
+      // RepaintBoundary that this builder injects. Without it the SDK records
+      // events but zero frames.
+      builder: Replay.appBuilder,
       // Auto-tag screens from named routes (native swizzling can't see
       // Flutter's Navigator).
       navigatorObservers: <NavigatorObserver>[ReplayNavigatorObserver()],
