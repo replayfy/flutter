@@ -33,6 +33,17 @@ class ReplayFrameCapture {
   Timer? _timer;
   bool _busy = false;
 
+  // Integration diagnostic. recordScreen is on, so we run the capture loop —
+  // but frames only flow if the app wired `MaterialApp(builder:
+  // Replay.appBuilder)` to mount our root RepaintBoundary. Track whether we
+  // ever found it (and ever shipped a frame) so we can warn ONCE if the builder
+  // is missing; without this a mis-integrated app records events but zero frames
+  // and the omission is silent.
+  Timer? _diagnosticTimer;
+  bool _boundaryEverFound = false;
+  int _framesShipped = 0;
+  bool _warned = false;
+
   /// Wrap [child] in an `Overlay` + `RepaintBoundary`. Use as
   /// `MaterialApp(builder: Replay.appBuilder)`.
   Widget wrap(BuildContext context, Widget? child) {
@@ -56,11 +67,54 @@ class ReplayFrameCapture {
     _timer?.cancel();
     _timer = Timer.periodic(
         const Duration(milliseconds: 500), (_) => unawaited(_capture()));
+    // One-shot integration check ~8s in (≈16 capture attempts) — enough time for
+    // the app to build and the appBuilder to mount the boundary. If nothing has
+    // been captured by then, the builder is almost certainly missing.
+    _diagnosticTimer?.cancel();
+    if (!_warned) {
+      _diagnosticTimer =
+          Timer(const Duration(seconds: 8), _checkInstallDiagnostic);
+    }
   }
 
   void stop() {
     _timer?.cancel();
     _timer = null;
+    _diagnosticTimer?.cancel();
+    _diagnosticTimer = null;
+  }
+
+  /// Fires once, ~8s after [install]. If our root RepaintBoundary was never
+  /// found, the host app never installed the capture builder, so no frames can
+  /// be captured — warn loudly and actionably. If the boundary WAS found but
+  /// nothing shipped, capture is failing for a different reason (secure surface,
+  /// backgrounded app) — a softer note.
+  void _checkInstallDiagnostic() {
+    if (_warned) return;
+    if (!_boundaryEverFound) {
+      _warned = true;
+      debugPrint(
+        '[replayfy] ⚠️  Screen recording is ON but NO frames are being captured.\n'
+        '[replayfy]     Native capture cannot read the Flutter surface on Android,\n'
+        '[replayfy]     so frames come from a Dart-side RepaintBoundary that you\n'
+        '[replayfy]     must install through the app builder:\n'
+        '[replayfy]\n'
+        '[replayfy]         MaterialApp(\n'
+        '[replayfy]           builder: Replay.appBuilder,   // <-- add this line\n'
+        '[replayfy]           ...\n'
+        '[replayfy]         )\n'
+        '[replayfy]\n'
+        '[replayfy]     Until then Replayfy records events but the player shows no\n'
+        '[replayfy]     video. Pass recordScreen: false to ReplayConfig to silence this.',
+      );
+    } else if (_framesShipped == 0) {
+      _warned = true;
+      debugPrint(
+        '[replayfy] ⚠️  Screen recording is ON and the capture boundary is '
+        'mounted, but no frames have been produced yet. If the player stays '
+        'blank, check for secure/DRM surfaces or a long-backgrounded app.',
+      );
+    }
   }
 
   Future<void> _capture() async {
@@ -70,6 +124,9 @@ class ReplayFrameCapture {
       final BuildContext? ctx = rootBoundaryKey.currentContext;
       final RenderObject? ro = ctx?.findRenderObject();
       if (ro is! RenderRepaintBoundary) return;
+      // The boundary is in the tree, so the app builder is wired correctly —
+      // this alone clears the "missing builder" diagnostic.
+      _boundaryEverFound = true;
       // Wait for the in-flight frame to settle so we image a stable tree.
       try {
         await WidgetsBinding.instance.endOfFrame
@@ -104,6 +161,7 @@ class ReplayFrameCapture {
         'ts': DateTime.now().millisecondsSinceEpoch,
         'rects': rects,
       });
+      _framesShipped++;
     } catch (_) {
       /* skip frame */
     } finally {
