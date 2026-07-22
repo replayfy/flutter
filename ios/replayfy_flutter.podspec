@@ -18,11 +18,10 @@ Pod::Spec.new do |s|
   # real recording. For local development the example app points `Replay` at
   # the sibling SDK checkout via a :path pod entry in its Podfile.
   s.dependency 'Flutter'
-  # Replay/Presence (not bare Replay) so Socket.IO-Client-Swift is linked and
-  # MobilePresence's `#if canImport(SocketIO)` compiles in — otherwise a
-  # Flutter-on-iOS session never registers live presence (the dashboard shows
-  # the user offline). Android's plugin already wires MobilePresence.
-  s.dependency 'Replay/Presence'
+  # Bare Replay (Core). Live presence is derived server-side from ingest-batch
+  # recency now, so there is no Socket.IO subspec to opt into — the Presence
+  # subspec was removed from the Replay podspec.
+  s.dependency 'Replay'
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end
