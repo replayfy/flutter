@@ -21,18 +21,17 @@ let package = Package(
     // manifest when Swift Package Manager is enabled. Gives the plugin
     // `import Flutter`.
     .package(name: "FlutterFramework", path: "../FlutterFramework"),
-    // The native iOS SDK that does the real recording. Path dependency for
-    // local development against the sibling checkout; a published release
-    // pins a versioned git/registry reference instead (the podspec resolves
-    // the same SDK via `s.dependency 'Replay'`).
-    .package(name: "Replay", path: "../../../replay-ios-sdk"),
+    // The native iOS SDK that does the real recording, resolved from the
+    // published repo by version (the CocoaPods podspec resolves the same SDK
+    // via `s.dependency 'Replayfy'`). Its SwiftPM product is "Replayfy".
+    .package(url: "https://github.com/replayfy/ios-sdk.git", from: "0.0.1"),
   ],
   targets: [
     .target(
       name: "replayfy_flutter",
       dependencies: [
         .product(name: "FlutterFramework", package: "FlutterFramework"),
-        .product(name: "Replay", package: "Replay"),
+        .product(name: "Replayfy", package: "ios-sdk"),
       ]
     ),
   ]

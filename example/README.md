@@ -18,13 +18,13 @@ flutter pub get
 
 ## Wire the local native SDKs (development)
 
-The plugin depends on the native SDKs (`Replay` pod / `com.replayfy:android-sdk`).
+The plugin depends on the native SDKs (`Replayfy` pod / `com.github.replayfy:android-sdk`).
 For local development against the sibling checkouts in this monorepo:
 
-**iOS** — in `example/ios/Podfile`, point the `Replay` pod at the local SDK:
+**iOS** — in `example/ios/Podfile`, point the `Replayfy` pod at the local SDK:
 
 ```ruby
-pod 'Replay', :path => '../../../replay-ios-sdk'
+pod 'Replayfy', :path => '../../../replay-ios-sdk'
 ```
 
 then `cd ios && pod install`.
@@ -36,7 +36,7 @@ cd ../../replay-android-sdk && ./gradlew :sdk:publishToMavenLocal
 ```
 
 `mavenLocal()` is already in the plugin's repositories, so Gradle resolves
-`com.replayfy:android-sdk:0.0.1` from there.
+`com.github.replayfy:android-sdk:0.0.1` from there.
 
 ## Run
 
