@@ -6,7 +6,7 @@ name: Publish (pub.dev)
 #   1. bump `version:` in pubspec.yaml + add a CHANGELOG entry, merge to main
 #   2. git tag v0.0.1 && git push origin v0.0.1   → this workflow publishes.
 #
-# One-time setup on pub.dev: open the `replayfy` package → Admin → Automated
+# One-time setup on pub.dev: open the `replayfy_flutter` package → Admin → Automated
 # publishing → enable "Publishing from GitHub Actions", set repository
 # `replayfy/flutter` and tag pattern `v{{version}}`.
 on:

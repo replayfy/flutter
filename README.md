@@ -36,7 +36,7 @@ console output and uncaught async errors are captured too:
 
 ```dart
 import 'package:flutter/widgets.dart';
-import 'package:replayfy/flutter.dart';
+import 'package:replayfy_flutter/replayfy_flutter.dart';
 
 void main() => Replay.runZoned(() async {
   WidgetsFlutterBinding.ensureInitialized();
