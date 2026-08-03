@@ -13,8 +13,8 @@ import '../replay_channel.dart';
 /// three funnel into [reportException] here.
 ///
 /// The framework/platform hooks **chain** whatever was installed before us, so
-/// the red error screen, `flutter run` output, and any other reporter
-/// (Crashlytics, Sentry) keep working untouched.
+/// the red error screen, `flutter run` output, and any other crash reporter you
+/// already have installed keep working untouched.
 class ReplayErrorCapture {
   ReplayErrorCapture._();
 
@@ -42,13 +42,16 @@ class ReplayErrorCapture {
   /// the framework hook, the platform hook, and `Replay.runZoned`'s
   /// uncaught-error callback. Fire-and-forget; never throws.
   static void reportException(String message, StackTrace? stack,
-      {required bool fatal}) {
+      {required bool fatal, Map<String, dynamic>? properties}) {
     ReplayChannel.instance.invoke('track', <String, dynamic>{
       'name': r'$exception',
       'properties': <String, dynamic>{
         'message': message,
         'stack': stack?.toString(),
         'fatal': fatal,
+        // Optional developer-supplied props (from the public captureException);
+        // the auto callers pass none, so their payload is byte-identical.
+        if (properties != null) ...properties,
       },
     });
   }
