@@ -1,103 +1,220 @@
-# replayfy_flutter
+# Replayfy for Flutter
 
-Replayfy session replay & product analytics for Flutter apps (iOS + Android).
+> Session replay, product analytics & error monitoring for your Flutter apps — iOS and Android.
 
-This is a thin plugin over the native Replayfy SDKs — the native engines do
-the real recording (periodic screenshots, taps, performance vitals, crashes).
-The Dart layer contributes the public API, `ReplayConfig`, and the masking
-widget.
+Replayfy records what your users actually experience — every screen, tap, and
+error — so you can see how your product is really used, understand drop-off,
+and fix bugs from a real reproduction instead of a guess.
+
+## Features
+
+- **Session replay** — pixel-accurate playback of real user sessions on iOS and Android.
+- **Product analytics** — funnels, custom events, and user journeys from `identify` and `track`.
+- **Error & crash monitoring** — automatic capture of unhandled errors and crashes, plus manual `captureException`.
+- **Automatic capture** — screens, taps, network requests, console output, performance vitals, and device info, out of the box.
+- **Privacy-first masking** — blur, cover, or pixelate any sensitive widget; mask all inputs with one flag; nothing sensitive leaves the device.
+- **Remote configuration** — tune capture from the dashboard without shipping a new build.
+- **GDPR-ready** — a persistent per-user opt-out kill switch.
 
 ## Install
 
-```yaml
-dependencies:
-  replayfy_flutter: ^0.0.1
+```sh
+flutter pub add replayfy
 ```
 
-For local development against the SDKs in this monorepo, the example app
-points the native dependency at the sibling SDK checkouts (see
-`example/ios/Podfile` and `example/android/settings.gradle`).
+Or add it to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  replayfy: ^0.0.1
+```
 
 ## Quick start
 
-```dart
-import 'package:replayfy_flutter/replayfy_flutter.dart';
+Start Replayfy as early as possible — ideally inside `Replay.runZoned` so
+console output and uncaught async errors are captured too:
 
-await Replay.start(const ReplayConfig(
-  projectKey: 'rpl_pk_xxx',
-  ingestUrl: 'https://ingest.replayfy.io',
-));
+```dart
+import 'package:flutter/widgets.dart';
+import 'package:replayfy/flutter.dart';
+
+void main() => Replay.runZoned(() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Replay.start(const ReplayConfig(
+    projectKey: 'rpl_pk_xxx',
+    ingestUrl: 'https://us.replayfy.app',
+  ));
+
+  runApp(const MyApp());
+});
 ```
 
-`start()` boots the native engine, which auto-captures screenshots, taps,
-performance, and crashes. No per-screen wiring is required.
-
-## Masking sensitive content
-
-Wrap anything sensitive in a single widget:
+To enable session replay, use the provided app builder so Replayfy can capture
+each frame:
 
 ```dart
-ReplayMask(
-  child: Text('•••• •••• •••• 4242'),
-)
+MaterialApp(
+  builder: Replay.appBuilder,
+  navigatorObservers: [ReplayNavigatorObserver()], // auto-tags screens
+  home: const HomePage(),
+);
 ```
 
-Flutter renders everything into one surface, so there are no per-widget
-native views to register (the way the iOS/Android/React Native SDKs do).
-Instead the masked region's bounds are tracked on the Dart side and the
-native engine **pulls** them at capture rate (~3 fps) right before each
-screenshot — the masked region is blurred with a diagonal-stripe overlay,
-matching the other SDKs. IPC happens at capture rate, not per frame.
+## Configuration
 
-## Text input tracking
+Every option on `ReplayConfig`:
 
-Flutter manages its own text widgets, so there's no native field to
-auto-observe — call `trackInput` from a field's `onSubmitted` /
-`onEditingComplete`. Pass `masked: true` for sensitive fields (the value
-is dropped to `"***"` and never leaves the device):
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `projectKey` | `String` | — (required) | Your project API key from the dashboard. |
+| `ingestUrl` | `String` | — (required) | Your Replayfy ingest host, e.g. `https://us.replayfy.app`. |
+| `distinctId` | `String?` | `null` | Known user id at start; otherwise an install-stable anonymous id is used. |
+| `recordScreen` | `bool` | `true` | Capture screen frames for replay. |
+| `recordNetwork` | `bool` | `true` | Capture network requests and responses. |
+| `recordConsole` | `bool` | `true` | Capture console output (`print` / `debugPrint`). Requires `Replay.runZoned`. |
+| `recordErrors` | `bool` | `true` | Capture unhandled errors and crashes. |
+| `recordPerformance` | `bool` | `true` | Capture performance vitals (cold start, frame drops, memory, thermal, battery). |
+| `maskAllInputs` | `bool` | `false` | Automatically mask every text input. |
+| `autoScreenName` | `bool` | `true` | Automatically tag screens from the navigator. |
+| `useRemoteConfig` | `bool` | `true` | Let the dashboard override capture settings remotely. |
+| `debug` | `bool` | `false` | Verbose SDK logging. |
+
+## API
+
+All methods are static on `Replay`. Most return `Future<void>`.
+
+### Lifecycle
 
 ```dart
-TextField(
-  onSubmitted: (v) => Replay.trackInput('Email', v),
-)
+await Replay.start(config);       // boot the SDK and start recording
+await Replay.stop();              // stop and finalize the session
+await Replay.pauseRecording();    // pause capture without ending the session
+await Replay.resumeRecording();   // resume after a pause
+await Replay.startNewSession();   // end the current session, begin a fresh one
+await Replay.cancelSession();     // discard the in-flight session without uploading
+
+final recording = await Replay.isRecording();       // bool
+final sessionId = await Replay.currentSessionId();   // String?
+```
+
+**`Replay.flush()` equivalent** — force-upload everything immediately (e.g. right before a forced logout):
+
+```dart
+await Replay.stopApplicationAndUploadData();
+```
+
+### Identify a user
+
+```dart
+await Replay.identify('user_123', properties: {
+  'email': 'ada@example.com',
+  'plan': 'pro',
+});
+```
+
+### Track an event
+
+```dart
+await Replay.track('checkout_completed', properties: {
+  'value': 49.0,
+  'currency': 'USD',
+});
+```
+
+### Capture an exception
+
+```dart
+try {
+  await risky();
+} catch (e, stack) {
+  await Replay.captureException(e, stackTrace: stack); // handled: true by default
+}
+```
+
+### Track a text input
+
+Flutter manages its own text widgets, so record a field's value from its
+callback. Pass `masked: true` for sensitive fields — the value is dropped to
+`"***"` and never leaves the device:
+
+```dart
+TextField(onSubmitted: (v) => Replay.trackInput('Email', v));
 TextField(
   obscureText: true,
   onSubmitted: (v) => Replay.trackInput('Password', v, masked: true),
-)
+);
 ```
 
-## Public API
+### Screens, tags & properties
 
-All methods are static on `Replay` and return `Future<void>` unless noted.
-
-| Method | Purpose |
-|---|---|
-| `start(config)` / `stop()` | Boot + start / stop recording |
-| `identify(distinctId, {properties})` | Attach a known user |
-| `track(name, {properties})` | Custom timeline / funnel event |
-| `trackInput(label, value, {masked})` | Record a text input's value (masked → `"***"`) |
-| `tagScreenName(name)` | Set the current screen (call from a route observer or screen `initState`) |
-| `addTagWithProperties(name, {properties})` | Tag the session |
-| `setMetadata` / `setUserProperty` / `setSessionProperty` | Sticky key/values |
-| `setMaskStyle(style)` | Global mask style (blur / overlay / pixelate) |
-| `log(message, {level})` | Bridge a custom logger into the console tab |
-| `pauseRecording` / `resumeRecording` / `startNewSession` / `cancelSession` | Lifecycle |
-| `optOut(bool)` / `optIn()` / `isOptedOut()` | GDPR opt-out |
-| `isRecording()` / `currentSessionId()` | Session state |
-| `occludeAllTextFields` / `occludeAllTextView` / `occludeSensitiveScreen` | Bulk masking |
-| `setMultiSessionRecord` / `allowShortBreakForAnotherApp` / `setAppVersion` / `setPushNotificationToken` / `markSessionAsFavorite` / `reportBugEvent` | Session extras |
-| `urlForCurrentSession()` / `urlForCurrentUser()` | Deep links |
-| `ReplayMask(child:)` | Mask sensitive content (widget) |
-
-Screenshots, taps, performance, device info (incl. network type), and
-crashes are captured automatically.
-
-## Building
-
-Requires the Flutter SDK. From the package root:
-
-```sh
-flutter pub get
-flutter analyze
-cd example && flutter run
+```dart
+await Replay.tagScreenName('Checkout');
+await Replay.addTagWithProperties('promo_shown', properties: {'variant': 'B'});
+await Replay.setUserProperty('plan', 'pro');       // sticks to the user
+await Replay.setSessionProperty('experiment', 'A'); // this session only
+await Replay.setMetadata('build_channel', 'beta');
+await Replay.markSessionAsFavorite();
+await Replay.reportBugEvent('Broken layout', description: 'Overflow on the cart row');
+await Replay.log('order placed', level: 'info');    // into the console timeline
 ```
+
+### Runtime configuration
+
+```dart
+await Replay.setAutomaticScreenNameTagging(true);
+await Replay.setMultiSessionRecord(true);
+await Replay.allowShortBreakForAnotherApp(true);
+await Replay.setAppVersion('1.4.0', build: '204');
+await Replay.setPushNotificationToken(token, platform: 'fcm');
+```
+
+### Deep links
+
+```dart
+final sessionUrl = await Replay.urlForCurrentSession(); // String?
+final userUrl = await Replay.urlForCurrentUser();       // String?
+```
+
+## Privacy & masking
+
+Replayfy is built to keep sensitive data off the wire.
+
+**Mask a widget** — wrap anything sensitive; it is blurred (default), covered,
+or pixelated in the recording:
+
+```dart
+ReplayMask(
+  maskStyle: ReplayMaskStyle.blur, // .blur | .overlay | .pixelate
+  child: Text('•••• •••• •••• 4242'),
+);
+```
+
+**Set the global mask style** for bulk-occluded and whole-screen regions:
+
+```dart
+await Replay.setMaskStyle(ReplayMaskStyle.pixelate);
+```
+
+**Bulk & whole-screen masking:**
+
+```dart
+await Replay.occludeAllTextFields(true);      // all text fields
+await Replay.occludeAllTextView(true);        // all multi-line text views
+await Replay.occludeSensitiveScreen(true);    // the entire screen
+```
+
+Or mask every input from the start with `maskAllInputs: true` in `ReplayConfig`.
+
+**GDPR opt-out** — a persistent kill switch that survives relaunches:
+
+```dart
+await Replay.optOut(true);                 // stop all recording
+await Replay.optIn();                       // resume (same as optOut(false))
+final out = await Replay.isOptedOut();      // bool
+```
+
+## Links
+
+- Docs: https://replayfy.app
+- Dashboard: https://replayfy.app
