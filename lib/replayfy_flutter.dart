@@ -166,6 +166,23 @@ class Replay {
     });
   }
 
+  /// Report a developer-caught exception on the session timeline. Emits the same
+  /// `$exception` event the automatic error handlers emit, so a handled error is
+  /// first-class in the dashboard's issues. [handled] defaults to true
+  /// (non-fatal); it maps to the wire's `fatal` discriminator (`fatal = !handled`).
+  static Future<void> captureException(Object error,
+      {StackTrace? stackTrace,
+      bool handled = true,
+      Map<String, dynamic>? properties}) {
+    ReplayErrorCapture.reportException(
+      error.toString(),
+      stackTrace,
+      fatal: !handled,
+      properties: properties,
+    );
+    return Future<void>.value();
+  }
+
   /// Record a text input's value on the session timeline. Flutter manages its
   /// own text widgets (there's no native field for the engine to observe), so
   /// call this from your field's `onSubmitted`/`onEditingComplete`. Pass
