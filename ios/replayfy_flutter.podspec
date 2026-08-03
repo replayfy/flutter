@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'replayfy_flutter'
-  s.version          = '0.0.2'
+  s.version          = '0.0.3'
   s.summary          = 'Replayfy session replay & analytics for Flutter (iOS).'
   s.description      = 'Thin Flutter plugin over the native Replayfy iOS SDK.'
   s.homepage         = 'https://replayfy.app'
-  s.license          = { :type => 'Commercial' }
+  s.license          = { :type => 'BSD-3-Clause' }
   s.authors          = { 'Nasirudeen Olohundare' => 'iamnasirudeen@gmail.com' }
   s.source           = { :path => '.' }
 

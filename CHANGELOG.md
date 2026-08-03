@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.3
+
+- Relicensed under BSD-3-Clause (was MIT).
+
 ## 0.0.2
 
 - Fix native SDK resolution for published builds. The iOS plugin now depends on
