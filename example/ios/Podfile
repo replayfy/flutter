@@ -1,4 +1,4 @@
-# The Replayfy plugin + native Replay pod require iOS 15.
+# The Replayfy plugin + native Replayfy pod require iOS 15.
 platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
@@ -31,7 +31,7 @@ target 'Runner' do
   use_frameworks!
 
   # Native iOS SDK that does the real recording (local checkout in dev).
-  pod 'Replay', :path => '../../../replay-ios-sdk'
+  pod 'Replayfy', :path => '../../../replay-ios-sdk'
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

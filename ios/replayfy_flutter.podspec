@@ -1,9 +1,9 @@
 Pod::Spec.new do |s|
   s.name             = 'replayfy_flutter'
-  s.version          = '0.0.1'
+  s.version          = '0.0.2'
   s.summary          = 'Replayfy session replay & analytics for Flutter (iOS).'
   s.description      = 'Thin Flutter plugin over the native Replayfy iOS SDK.'
-  s.homepage         = 'https://replayfy.io'
+  s.homepage         = 'https://replayfy.app'
   s.license          = { :type => 'Commercial' }
   s.authors          = { 'Nasirudeen Olohundare' => 'iamnasirudeen@gmail.com' }
   s.source           = { :path => '.' }
@@ -15,13 +15,12 @@ Pod::Spec.new do |s|
   s.swift_version    = '5.0'
 
   # The Flutter engine (platform channels) + the native iOS SDK that does the
-  # real recording. For local development the example app points `Replay` at
-  # the sibling SDK checkout via a :path pod entry in its Podfile.
+  # real recording, published to CocoaPods trunk as "Replayfy". For local
+  # development the example app overrides it with a :path pod entry in its Podfile.
   s.dependency 'Flutter'
-  # Bare Replay (Core). Live presence is derived server-side from ingest-batch
-  # recency now, so there is no Socket.IO subspec to opt into — the Presence
-  # subspec was removed from the Replay podspec.
-  s.dependency 'Replay'
+  # Bare Replayfy (Core). Live presence is derived server-side from ingest-batch
+  # recency now, so there is no Socket.IO subspec to opt into.
+  s.dependency 'Replayfy'
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

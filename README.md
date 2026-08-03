@@ -19,14 +19,30 @@ and fix bugs from a real reproduction instead of a guess.
 ## Install
 
 ```sh
-flutter pub add replayfy
+flutter pub add replayfy_flutter
 ```
 
 Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  replayfy: ^0.0.1
+  replayfy_flutter: ^0.0.2
+```
+
+### Android (JitPack)
+
+The native Android recording engine is distributed through JitPack. Add its
+repository to your app's `android/settings.gradle` so Gradle can resolve the
+transitive native SDK:
+
+```gradle
+dependencyResolutionManagement {
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+  }
+}
 ```
 
 ## Quick start
