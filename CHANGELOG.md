@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.3
+## 0.0.4
 
 - Relicensed under BSD-3-Clause (was MIT).
 

@@ -11,7 +11,7 @@
 ///
 /// `start()` boots the native engine, which auto-captures screenshots,
 /// taps, performance, and crashes. Wrap sensitive widgets in [ReplayMask].
-library replayfy_flutter;
+library;
 
 import 'dart:async';
 
