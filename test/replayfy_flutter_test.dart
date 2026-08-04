@@ -20,8 +20,8 @@ void main() {
   group('ReplayConfig', () {
     test('toMap carries the documented knobs with correct defaults', () {
       const c = ReplayConfig(
-        projectKey: 'k',
-        ingestUrl: 'u',
+        apiKey: 'k',
+        apiHost: 'u',
         maskAllInputs: true,
         recordNetwork: true,
       );
@@ -68,8 +68,8 @@ void main() {
       // Disable the auto-installed captures so this test doesn't mutate global
       // state (error hooks, HttpOverrides, console flag).
       await Replay.start(const ReplayConfig(
-        projectKey: 'k',
-        ingestUrl: 'u',
+        apiKey: 'k',
+        apiHost: 'u',
         recordErrors: false,
         recordNetwork: false,
         recordConsole: false,
