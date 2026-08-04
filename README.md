@@ -233,4 +233,4 @@ final out = await Replay.isOptedOut();      // bool
 ## Links
 
 - Docs: https://docs.replayfy.app/platforms/flutter
-- Dashboard: https://replayfy.app
+- Dashboard: https://app.replayfy.app
