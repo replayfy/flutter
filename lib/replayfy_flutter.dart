@@ -4,8 +4,8 @@
 /// import 'package:replayfy_flutter/replayfy_flutter.dart';
 ///
 /// await Replay.start(const ReplayConfig(
-///   projectKey: 'rpl_pk_xxx',
-///   ingestUrl: 'https://ingest.replayfy.io',
+///   apiKey: 'rpl_pk_xxx',
+///   apiHost: 'https://us.replayfy.app',
 /// ));
 /// ```
 ///
@@ -55,7 +55,7 @@ class Replay {
     // uploads to the ingest host.
     if (config.recordNetwork) {
       ReplayNetworkCapture.install(
-        ignoreHosts: <String>{Uri.parse(config.ingestUrl).host},
+        ignoreHosts: <String>{Uri.parse(config.apiHost).host},
       );
     }
     // Console capture rides Replay.runZoned's print hook; this just arms it.
@@ -75,8 +75,8 @@ class Replay {
       ReplayFrameCapture.instance.install();
     }
     return _ch.invoke('start', <String, dynamic>{
-      'projectKey': config.projectKey,
-      'ingestUrl': config.ingestUrl,
+      'projectKey': config.apiKey,
+      'ingestUrl': config.apiHost,
       'config': config.toJson(),
     });
   }

@@ -44,6 +44,6 @@ cd ../../replay-android-sdk && ./gradlew :sdk:publishToMavenLocal
 flutter run        # with an emulator/simulator or device attached
 ```
 
-The example points `ingestUrl` at `http://10.0.2.2:4000` (the Android
+The example points `apiHost` at `http://10.0.2.2:4000` (the Android
 emulator's alias for the host's `localhost:4000`). On iOS simulator use
 `http://localhost:4000`; on a physical device use the host's LAN IP.

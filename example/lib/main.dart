@@ -11,7 +11,7 @@ void main() {
 
     // Android emulator reaches the host at 10.0.2.2; iOS simulator shares
     // the host network, so localhost works.
-    final String ingestUrl = Platform.isAndroid
+    final String apiHost = Platform.isAndroid
         ? 'http://10.0.2.2:4000'
         : 'http://localhost:4000';
 
@@ -19,8 +19,8 @@ void main() {
     // performance, and crashes; the Dart layer adds masking + network +
     // console + error capture. recordNetwork/Console/Errors default on.
     await Replay.start(ReplayConfig(
-      projectKey: 'rpl_pk_ef7e2fc8c7f952bcd0a69466e1a42a0625f9',
-      ingestUrl: ingestUrl,
+      apiKey: 'rpl_pk_ef7e2fc8c7f952bcd0a69466e1a42a0625f9',
+      apiHost: apiHost,
       maskAllInputs: false,
     ));
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.5
+
+- **Breaking:** renamed `ReplayConfig.projectKey` -> `apiKey` and `ingestUrl` ->
+  `apiHost` to match the other Replayfy SDKs. Update your `ReplayConfig(apiKey:,
+  apiHost:)`.
+
 ## 0.0.4
 
 - Relicensed under BSD-3-Clause (was MIT).

@@ -2,16 +2,16 @@ import 'dart:convert';
 
 /// Top-level configuration passed to [Replayfy.start].
 ///
-/// Field names mirror the Replayfy React Native SDK (`projectKey`,
-/// `ingestUrl`, `recordScreen`, `maskAllInputs`) so a team shipping on
+/// Field names mirror the other Replayfy SDKs (`apiKey`, `apiHost`,
+/// `recordScreen`, `maskAllInputs`) so a team shipping on
 /// multiple stacks sees one vocabulary. The native engine owns the
 /// authoritative knobs (`captureSnapshotPixels`, `captureConsole`, …); this
 /// config is serialised to JSON and handed to the native bridge at boot,
 /// which maps it onto the native `ReplayConfig`.
 class ReplayConfig {
   const ReplayConfig({
-    required this.projectKey,
-    required this.ingestUrl,
+    required this.apiKey,
+    required this.apiHost,
     this.distinctId,
     this.recordScreen = true,
     this.recordNetwork = true,
@@ -24,11 +24,11 @@ class ReplayConfig {
     this.debug = false,
   });
 
-  /// Project API key from the dashboard (e.g. `rpl_pk_…`).
-  final String projectKey;
+  /// Project API key from the dashboard (publishable, e.g. `rpl_pk_…`).
+  final String apiKey;
 
-  /// Ingest base URL, e.g. `https://ingest.replayfy.io`.
-  final String ingestUrl;
+  /// Ingest base URL, e.g. `https://us.replayfy.app`.
+  final String apiHost;
 
   /// Known user id at start (else an install-stable anonymous id).
   final String? distinctId;

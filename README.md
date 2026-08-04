@@ -26,7 +26,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  replayfy_flutter: ^0.0.2
+  replayfy_flutter: ^0.0.5
 ```
 
 ### Android (JitPack)
@@ -58,8 +58,8 @@ void main() => Replay.runZoned(() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Replay.start(const ReplayConfig(
-    projectKey: 'rpl_pk_xxx',
-    ingestUrl: 'https://us.replayfy.app',
+    apiKey: 'rpl_pk_xxx',
+    apiHost: 'https://us.replayfy.app',
   ));
 
   runApp(const MyApp());
@@ -83,8 +83,8 @@ Every option on `ReplayConfig`:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `projectKey` | `String` | — (required) | Your project API key from the dashboard. |
-| `ingestUrl` | `String` | — (required) | Your Replayfy ingest host, e.g. `https://us.replayfy.app`. |
+| `apiKey` | `String` | — (required) | Your project API key from the dashboard. |
+| `apiHost` | `String` | — (required) | Your Replayfy ingest host, e.g. `https://us.replayfy.app`. |
 | `distinctId` | `String?` | `null` | Known user id at start; otherwise an install-stable anonymous id is used. |
 | `recordScreen` | `bool` | `true` | Capture screen frames for replay. |
 | `recordNetwork` | `bool` | `true` | Capture network requests and responses. |
