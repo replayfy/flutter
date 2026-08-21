@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.6
+
+- Android: the bundled native SDK now resolves from Maven Central
+  (`app.replayfy:android-sdk:0.0.3`) as the primary source, with JitPack kept as
+  a fallback. Fixes Gradle `No route to host` failures on networks that can't
+  reach jitpack.io, and removes the need to add the JitPack repository to your
+  app's `android/settings.gradle`.
+
 ## 0.0.5
 
 - **Breaking:** renamed `ReplayConfig.projectKey` -> `apiKey` and `ingestUrl` ->

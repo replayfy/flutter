@@ -1,6 +1,6 @@
 name: replayfy_flutter
 description: Session replay, product analytics and error monitoring for your Flutter apps on iOS and Android.
-version: 0.0.5
+version: 0.0.6
 homepage: https://replayfy.app
 repository: https://github.com/replayfy/flutter
 
