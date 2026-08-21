@@ -234,3 +234,45 @@ final out = await Replay.isOptedOut();      // bool
 
 - Docs: https://docs.replayfy.app/platforms/flutter
 - Dashboard: https://app.replayfy.app
+
+## Native SDK distribution & build troubleshooting
+
+`replayfy_flutter` is a thin plugin over the native Replayfy SDKs, pulled at
+build time:
+
+- **Android** → `app.replayfy:android-sdk` from **Maven Central** (primary;
+  JitPack `com.github.replayfy:android-sdk` is a fallback).
+- **iOS** → the **`Replayfy`** pod from **CocoaPods trunk** (the Flutter default).
+
+### iOS: use CocoaPods, not Swift Package Manager
+
+Flutter's iOS integration uses **CocoaPods by default**, which pulls a published
+pod — reliable. Do **not** enable Flutter's SwiftPM integration for this plugin:
+Xcode's SwiftPM resolves the iOS SDK by doing a live `git ls-remote --tags`,
+which frequently fails in Xcode with `Couldn't get the list of tags` (Xcode uses
+its own git/cache/credentials, and GitHub rate-limits unauthenticated tag
+listing) even when the repo is reachable from your shell. If it's already on:
+
+```bash
+flutter config --no-enable-swift-package-manager
+flutter clean && cd ios && pod install --repo-update
+```
+
+### Fixing the two common build failures
+
+**Android — `No route to host` fetching from `jitpack.io`:** your build host
+can't reach JitPack (corporate/CI firewall, proxy, or IPv6). Maven Central
+(now the primary channel) avoids this. If a build still hits JitPack:
+- confirm reachability on the *build host*: `curl -I https://jitpack.io`
+- behind a proxy → set `systemProp.https.proxyHost/proxyPort` in `gradle.properties`
+- IPv6 issue → `org.gradle.jvmargs=-Djava.net.preferIPv4Stack=true`
+
+**iOS — `Couldn't get the list of tags` resolving a Swift package:** you're on
+the SwiftPM path — switch to CocoaPods (above). If you must stay on SwiftPM,
+prime the cache with the shell git that works, or clear the SPM cache:
+
+```bash
+cd ios && xcodebuild -resolvePackageDependencies
+# or
+rm -rf ~/Library/Caches/org.swift.swiftpm ~/Library/Developer/Xcode/DerivedData
+```
