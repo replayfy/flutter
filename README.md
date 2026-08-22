@@ -26,7 +26,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  replayfy_flutter: ^0.0.5
+  replayfy_flutter: ^0.0.7
 ```
 
 ### Android (JitPack)
@@ -175,12 +175,31 @@ await Replay.reportBugEvent('Broken layout', description: 'Overflow on the cart 
 await Replay.log('order placed', level: 'info');    // into the console timeline
 ```
 
+### Exclude a screen
+
+Stop capturing **frames** for a screen by name. While an excluded screen is in
+the foreground the periodic screenshot capture pauses — taps, network, console,
+and performance events keep flowing — and it resumes on the next non-excluded
+screen. Names are matched case-insensitively against the tagged (or auto-tagged)
+screen name.
+
+```dart
+await Replay.excludeScreen('Checkout');                  // stop capturing frames of this screen
+await Replay.unexcludeScreen('Checkout');                // resume capturing it
+await Replay.setExcludedScreens(['Checkout', 'Card']);   // replace the whole exclusion list
+```
+
+This is distinct from `occludeSensitiveScreen` (below), which keeps recording
+the screen but blanks the frame — exclusion captures no frames of that screen at
+all.
+
 ### Runtime configuration
 
 ```dart
 await Replay.setAutomaticScreenNameTagging(true);
-await Replay.setMultiSessionRecord(true);
-await Replay.allowShortBreakForAnotherApp(true);
+await Replay.enableAdvancedGestureRecognizer(true); // also capture pinch + rotate (default off)
+await Replay.setMultiSessionRecord(true);           // many sessions per launch (default); false = one, then no more this launch
+await Replay.allowShortBreakForAnotherApp(true, breakWindowMs: 30000); // a switch away shorter than the window keeps the session; longer starts a fresh one
 await Replay.setAppVersion('1.4.0', build: '204');
 await Replay.setPushNotificationToken(token, platform: 'fcm');
 ```
