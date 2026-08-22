@@ -201,6 +201,20 @@ class Replay {
   static Future<void> tagScreenName(String name) =>
       _ch.invoke('tagScreenName', <String, dynamic>{'name': name});
 
+  /// Exclude a screen from recording by name ("don't record this screen"):
+  /// the frame loop pauses while it's foreground, everything else keeps
+  /// flowing. Distinct from [occludeSensitiveScreen] (records but blanks).
+  static Future<void> excludeScreen(String name) =>
+      _ch.invoke('excludeScreen', <String, dynamic>{'name': name});
+
+  /// Stop excluding a previously-excluded screen.
+  static Future<void> unexcludeScreen(String name) =>
+      _ch.invoke('unexcludeScreen', <String, dynamic>{'name': name});
+
+  /// Replace the whole excluded-screens denylist.
+  static Future<void> setExcludedScreens(List<String> names) =>
+      _ch.invoke('setExcludedScreens', <String, dynamic>{'names': names});
+
   /// Tag the session with a named, optionally-propertied marker.
   static Future<void> addTagWithProperties(String name,
       {Map<String, dynamic>? properties}) {
@@ -266,9 +280,19 @@ class Replay {
   static Future<void> setMultiSessionRecord(bool enabled) =>
       _ch.invoke('setMultiSessionRecord', <String, dynamic>{'enabled': enabled});
 
-  /// Allow a brief switch to another app without ending the session.
-  static Future<void> allowShortBreakForAnotherApp(bool allow) =>
-      _ch.invoke('allowShortBreak', <String, dynamic>{'allow': allow});
+  /// Allow a brief switch to another app without ending the session. A gap
+  /// longer than [breakWindowMs] rotates to a fresh session on return.
+  static Future<void> allowShortBreakForAnotherApp(bool allow,
+          {int breakWindowMs = 30000}) =>
+      _ch.invoke('allowShortBreak',
+          <String, dynamic>{'allow': allow, 'breakWindowMs': breakWindowMs});
+
+  /// Capture pinch + rotate gestures in addition to tap/swipe/long-press.
+  /// (Native captures gestures for the host's real views; a pure-Flutter app
+  /// whose gestures are Dart-side is not covered by this native toggle.)
+  static Future<void> enableAdvancedGestureRecognizer(bool enabled) =>
+      _ch.invoke('enableAdvancedGestureRecognizer',
+          <String, dynamic>{'enabled': enabled});
 
   /// Bridge a customer log line into the `$console` event stream. (Flutter's
   /// native console capture is off — Dart owns it — so this routes through the

@@ -98,7 +98,14 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
       }
       "occludeAllTextView" -> { Replay.occludeAllTextView(call.argument<Boolean>("occlude") ?: false); result.success(null) }
       "setMultiSessionRecord" -> { Replay.setMultiSessionRecord(call.argument<Boolean>("enabled") ?: false); result.success(null) }
-      "allowShortBreak" -> { Replay.allowShortBreakForAnotherApp(call.argument<Boolean>("allow") ?: false); result.success(null) }
+      "allowShortBreak" -> {
+        val ms = call.argument<Number>("breakWindowMs")?.toLong() ?: 30_000L
+        Replay.allowShortBreakForAnotherApp(call.argument<Boolean>("allow") ?: false, ms)
+        result.success(null)
+      }
+      "enableAdvancedGestureRecognizer" -> {
+        Replay.enableAdvancedGestureRecognizer(call.argument<Boolean>("enabled") ?: false); result.success(null)
+      }
       "stop" -> { Replay.stop(); stopPull(); result.success(null) }
       "isRecording" -> result.success(Replay.isRecording())
       "currentSessionId" -> result.success(Replay.currentSessionId() ?: "")
@@ -126,6 +133,9 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         result.success(null)
       }
       "tagScreenName" -> { Replay.tagScreenName(call.argument("name") ?: ""); result.success(null) }
+      "excludeScreen" -> { Replay.excludeScreen(call.argument("name") ?: ""); result.success(null) }
+      "unexcludeScreen" -> { Replay.unexcludeScreen(call.argument("name") ?: ""); result.success(null) }
+      "setExcludedScreens" -> { Replay.setExcludedScreens(call.argument<List<String>>("names") ?: emptyList()); result.success(null) }
       "addTagWithProperties" -> {
         Replay.addTagWithProperties(call.argument("name") ?: "", props(call.argument("properties")))
         result.success(null)

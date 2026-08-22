@@ -78,6 +78,21 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     Replay.tagScreenName('Home');
+
+    // === Engine-stub bridge tests — each forwards to native; watch [ReplaySdk] ===
+    Replay.enableAdvancedGestureRecognizer(true);       // → facade: enableAdvancedGestureRecognizer(true)
+    Replay.allowShortBreakForAnotherApp(true, breakWindowMs: 5000); // → facade: allowShortBreakForAnotherApp(true, 5000ms)
+    Replay.setMultiSessionRecord(true);                 // → facade: setMultiSessionRecord(true)
+    Replay.setExcludedScreens(<String>['Secret']);      // → facade: setExcludedScreens([Secret])
+    Replay.excludeScreen('Vault');                      // → facade: excludeScreen(Vault)
+
+    // Screen-exclusion round-trip through the channel: enter 'Secret' (excluded
+    // → PAUSED frames) then leave to 'Home' (→ RESUMED frames).
+    Future<void>.delayed(const Duration(seconds: 5),
+        () => Replay.tagScreenName('Secret'));
+    Future<void>.delayed(const Duration(seconds: 8),
+        () => Replay.tagScreenName('Home'));
+
     _refreshSession();
   }
 
@@ -181,6 +196,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 await _refreshSession();
               },
               child: const Text('Start new session'),
+            ),
+            TextButton(
+              onPressed: () => Replay.cancelSession(),
+              child: const Text('cancelSession (discard)'),
             ),
           ],
         ),

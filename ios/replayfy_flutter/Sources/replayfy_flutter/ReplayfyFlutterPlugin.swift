@@ -38,7 +38,11 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
     case "setMultiSessionRecord":
       Replay.setMultiSessionRecord(args["enabled"] as? Bool ?? false); result(nil)
     case "allowShortBreak":
-      Replay.allowShortBreakForAnotherApp(args["allow"] as? Bool ?? false); result(nil)
+      let ms = (args["breakWindowMs"] as? NSNumber)?.doubleValue ?? 30000
+      Replay.allowShortBreakForAnotherApp(args["allow"] as? Bool ?? false, windowSeconds: ms / 1000.0)
+      result(nil)
+    case "enableAdvancedGestureRecognizer":
+      Replay.enableAdvancedGestureRecognizer(args["enabled"] as? Bool ?? false); result(nil)
     case "stop":
       Replay.stop()
       result(nil)
@@ -71,6 +75,12 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "tagScreenName":
       Replay.tagScreenName(args["name"] as? String ?? ""); result(nil)
+    case "excludeScreen":
+      Replay.excludeScreen(args["name"] as? String ?? ""); result(nil)
+    case "unexcludeScreen":
+      Replay.unexcludeScreen(args["name"] as? String ?? ""); result(nil)
+    case "setExcludedScreens":
+      Replay.setExcludedScreens(args["names"] as? [String] ?? []); result(nil)
     case "addTagWithProperties":
       Replay.addTagWithProperties(args["name"] as? String ?? "",
                                   properties: args["properties"] as? [String: Any])
