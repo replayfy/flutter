@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.7
+
+- Wire the mobile engine stubs + screen exclusion through the plugin:
+  `excludeScreen` / `unexcludeScreen` / `setExcludedScreens` and
+  `enableAdvancedGestureRecognizer`, plus the short-break window
+  (`breakWindowMs`) on `allowShortBreakForAnotherApp`. Bundles native
+  Android SDK 0.0.4.
+
 ## 0.0.6
 
 - Android: the bundled native SDK now resolves from Maven Central
