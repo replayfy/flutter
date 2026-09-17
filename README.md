@@ -59,7 +59,7 @@ void main() => Replay.runZoned(() async {
 
   await Replay.start(const ReplayConfig(
     apiKey: 'rpl_pk_xxx',
-    apiHost: 'https://us.replayfy.app',
+    apiHost: 'https://us.replayfy.app',  // or your self-hosted API URL
   ));
 
   runApp(const MyApp());
@@ -84,7 +84,7 @@ Every option on `ReplayConfig`:
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `apiKey` | `String` | — (required) | Your project API key from the dashboard. |
-| `apiHost` | `String` | — (required) | Your Replayfy ingest host, e.g. `https://us.replayfy.app`. |
+| `apiHost` | `String` | — (required) | Your Replayfy ingest host, e.g. `https://us.replayfy.app` (or your self-hosted API URL). |
 | `distinctId` | `String?` | `null` | Known user id at start; otherwise an install-stable anonymous id is used. |
 | `recordScreen` | `bool` | `true` | Capture screen frames for replay. |
 | `recordNetwork` | `bool` | `true` | Capture network requests and responses. |
