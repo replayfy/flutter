@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'replayfy_flutter'
-  s.version          = '0.0.5'
+  s.version          = '0.0.8'
   s.summary          = 'Replayfy session replay & analytics for Flutter (iOS).'
   s.description      = 'Thin Flutter plugin over the native Replayfy iOS SDK.'
   s.homepage         = 'https://replayfy.app'
@@ -19,8 +19,15 @@ Pod::Spec.new do |s|
   # development the example app overrides it with a :path pod entry in its Podfile.
   s.dependency 'Flutter'
   # Bare Replayfy (Core). Live presence is derived server-side from ingest-batch
-  # recency now, so there is no Socket.IO subspec to opt into.
-  s.dependency 'Replayfy'
+  # recency now, so there is no Socket.IO subspec to opt into. 0.0.5 is the
+  # first release that keeps frames across background/resume and never takes
+  # native (unmasked) screenshots for a Flutter host.
+  s.dependency 'Replayfy', '>= 0.0.5'
+
+  # Replayfy is a static framework (it links PLCrashReporter's static
+  # xcframework), and a pod that depends on one must be static too, or a
+  # Podfile with `use_frameworks!` (Flutter's default) fails to install.
+  s.static_framework = true
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

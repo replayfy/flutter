@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.0.8
+
+- iOS: requires the native SDK `Replayfy` 0.0.5 or later (CocoaPods and Swift
+  Package Manager). It fixes, for Flutter apps on iOS:
+  - frames and events lost when the app goes to the background (uploads now
+    finish under a background task, and leftovers are sent on return);
+  - native, unmasked screenshots taken after the first background or after
+    leaving an excluded screen (a Flutter app's frames come only from the
+    Dart capturer, with its `ReplayMask` occlusion);
+  - excluded screens and `pauseRecording` not holding across foregrounding or
+    a session rotation, and not applying to Flutter's own frames.
+- iOS (CocoaPods): the plugin pod is now a static framework, like the
+  `Replayfy` pod it depends on. `pod install` failed with "transitive
+  dependencies that include statically linked binaries" in any app whose
+  Podfile uses `use_frameworks!`, which is Flutter's default.
+- The example app wraps `MaterialApp` with `builder: Replay.appBuilder`, as the
+  README says; without it no frames are captured.
+
+To update an existing app, run `flutter pub upgrade replayfy_flutter`, then
+`cd ios && pod update Replayfy --repo-update` (CocoaPods; a plain
+`pod install` keeps the version in `Podfile.lock`), or let Xcode resolve the
+new package version (Swift Package Manager), then ship a new build.
+
 ## 0.0.7
 
 - Wire the mobile engine stubs + screen exclusion through the plugin:

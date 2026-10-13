@@ -55,6 +55,9 @@ class ExampleApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Replayfy Flutter',
+      // Wraps the app in the Dart frame capturer (see README); without it no
+      // frames are recorded.
+      builder: Replay.appBuilder,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
       // Auto-tag screens from named routes (native swizzling can't see
       // Flutter's Navigator).

@@ -24,7 +24,7 @@ let package = Package(
     // The native iOS SDK that does the real recording, resolved from the
     // published repo by version (the CocoaPods podspec resolves the same SDK
     // via `s.dependency 'Replayfy'`). Its SwiftPM product is "Replayfy".
-    .package(url: "https://github.com/replayfy/ios-sdk.git", from: "0.0.1"),
+    .package(url: "https://github.com/replayfy/ios-sdk.git", from: "0.0.5"),
   ],
   targets: [
     .target(
