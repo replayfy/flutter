@@ -70,7 +70,8 @@ class Replay {
     // trailed scroll), so capture frames Dart-side via the root
     // RepaintBoundary on BOTH platforms and ship each frame with its occlusion
     // rects in the same payload — no poll, no mask lag. Requires the app to use
-    // `MaterialApp(builder: Replay.appBuilder)`.
+    // `MaterialApp(builder: Replay.appBuilder)`. Capture runs only while the
+    // app is on screen (it stops in the background and restarts on return).
     if (config.recordScreen) {
       ReplayFrameCapture.instance.install();
     }
@@ -121,6 +122,12 @@ class Replay {
   }
 
   /// Stop recording and finalize the session.
+  ///
+  /// Frame capture keeps running while the app is on screen: a session the
+  /// native engine opens later without [start] ([startNewSession], or Android
+  /// rotating to a fresh session after a long break) gets its frames only
+  /// from Dart. Frames reported while no session is recording are dropped
+  /// natively.
   static Future<void> stop() => _ch.invoke('stop');
 
   /// True while a session is actively recording.
@@ -144,6 +151,9 @@ class Replay {
   static Future<void> cancelSession() => _ch.invoke('cancelSession');
 
   /// Flush everything and upload immediately (e.g. before a forced logout).
+  ///
+  /// On Android the future completes once the session's data has been sent
+  /// (or after 5 s), so awaiting it before the process exits keeps the upload.
   static Future<void> stopApplicationAndUploadData() =>
       _ch.invoke('stopApplicationAndUploadData');
 

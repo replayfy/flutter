@@ -26,7 +26,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  replayfy_flutter: ^0.0.8
+  replayfy_flutter: ^0.0.9
 ```
 
 ### Android (JitPack)
@@ -119,6 +119,9 @@ final sessionId = await Replay.currentSessionId();   // String?
 ```dart
 await Replay.stopApplicationAndUploadData();
 ```
+
+On Android the future completes once the session's data has been sent (or
+after 5 s), so await it before the process exits.
 
 ### Identify a user
 

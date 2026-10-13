@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.0.9
+
+- Frames are captured only while the app is on screen. The Dart capturer's
+  timer kept running in the background, rendering and encoding a frame of a
+  screen nobody could see every 500 ms until the system suspended or froze
+  the app. It now stops when the app goes to the background (Flutter's
+  `hidden`, `paused` or `detached`), restarts when the app comes back, and
+  doesn't start before a frame with the app in it has been laid out.
+  `Replay.stop()` leaves it running while the app is on screen, as before.
+  Capture follows the lifecycle events the host sends, as Flutter's own
+  rendering does: an add-to-app host that turns off the engine's lifecycle
+  dispatch must send them itself.
+- Android: the future `stopApplicationAndUploadData` returns now completes
+  once the session's data has been sent, or after 5 s, so awaiting it before
+  the process exits (a forced logout, say) keeps that data. It used to
+  complete at once, with the uploads still under way. The wait doesn't hold
+  the main thread, but code that awaits it waits too: up to 5 s when the
+  device is offline. On iOS it still completes at once.
+- Android: requires the native SDK `app.replayfy:android-sdk` 0.0.5. It
+  fixes, for Flutter apps on Android:
+  - frames and events lost when the app goes to the background (everything
+    buffered, Flutter's frames included, is uploaded then, and an upload that
+    fails stays queued and goes out on return);
+  - a permission dialog or another Activity in front treated as the app
+    going to the background;
+  - native screenshots taken after the first background, `resumeRecording`
+    or leaving an excluded screen, alongside the Dart capturer's frames and
+    without their `ReplayMask` occlusion;
+  - frames reported while the app is in the background being recorded;
+  - excluded screens and `pauseRecording` not applying to Flutter's frames,
+    and not holding across the background, a session rotation or a screen
+    rotation;
+  - `stop`, `pauseRecording` and `resumeRecording` not sending everything
+    captured before them, a session end that never reached the server being
+    lost (it is now kept on disk and sent on the next launch), and a message
+    larger than the batch cap holding up the queue;
+  - each session's upload, screenshot and frame-decode threads outliving it:
+    every new session (after a long background, or `startNewSession`) left
+    about three idle threads behind for the life of the process;
+  - sessions reporting the native SDK as version 2.0.0, whatever its real
+    version.
+- iOS: requires the native SDK `Replayfy` 0.0.6 or later (CocoaPods and Swift
+  Package Manager). It drops the frames a Flutter app reports while it is in
+  the background, where the SDK's background task keeps it running: they
+  recorded a screen nobody could see and delayed the session's last upload,
+  and its end.
+- iOS (CocoaPods): the plugin pod declares the MIT license, matching
+  `LICENSE` (it declared BSD-3-Clause).
+
+To update an existing app, run `flutter pub upgrade replayfy_flutter`. On
+Android, the next Gradle build resolves the new native SDK from Maven
+Central. On iOS, run `cd ios && pod update Replayfy --repo-update`
+(CocoaPods; a plain `pod install` keeps the version in `Podfile.lock`), or
+let Xcode resolve the new package version (Swift Package Manager). Then ship
+a new build.
+
 ## 0.0.8
 
 - iOS: requires the native SDK `Replayfy` 0.0.5 or later (CocoaPods and Swift

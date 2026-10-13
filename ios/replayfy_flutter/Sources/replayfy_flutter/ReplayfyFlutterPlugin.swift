@@ -59,6 +59,12 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
     case "cancelSession":
       Replay.cancelSession(); result(nil)
     case "stopApplicationAndUploadData":
+      // The stop stays on the main thread, as on Android: it is main-thread
+      // work (main run-loop timers, touch capture) and must land before the
+      // calls Dart sends next. The native call returns without waiting for
+      // the uploads, so the reply goes at once. If it starts waiting, reply
+      // from a completion as the Android bridge does; don't block here or
+      // move the stop to another thread.
       Replay.stopApplicationAndUploadData(); result(nil)
     case "identify":
       Replay.identify(args["distinctId"] as? String ?? "",
