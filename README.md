@@ -26,7 +26,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  replayfy_flutter: ^0.0.7
+  replayfy_flutter: ^0.0.8
 ```
 
 ### Android (JitPack)
