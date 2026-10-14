@@ -18,8 +18,15 @@
   complete at once, with the uploads still under way. The wait doesn't hold
   the main thread, but code that awaits it waits too: up to 5 s when the
   device is offline. On iOS it still completes at once.
-- Android: requires the native SDK `app.replayfy:android-sdk` 0.0.5. It
+- Android: requires the native SDK `app.replayfy:android-sdk` 0.0.6. It
   fixes, for Flutter apps on Android:
+  - playback that flashed between two kinds of frame: the native SDK
+    restarted its own screenshots after a background, so the recording mixed
+    the Dart capturer's frames with native screenshots of the Flutter surface
+    (often black);
+  - a crash (`Detected multithreaded access to SnapshotStateObserver`) in
+    apps that show a Jetpack Compose screen, from the native screenshot
+    fallback drawing views off the main thread;
   - frames and events lost when the app goes to the background (everything
     buffered, Flutter's frames included, is uploaded then, and an upload that
     fails stays queued and goes out on return);

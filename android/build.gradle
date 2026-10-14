@@ -68,7 +68,7 @@ dependencies {
     // It is also the first whose engine stop calls back once the session's
     // uploads have settled, which the plugin's stopApplicationAndUploadData
     // waits on without blocking the main thread.
-    implementation "app.replayfy:android-sdk:0.0.5"
+    implementation "app.replayfy:android-sdk:0.0.6"
 
     // JVM unit tests (development only; not part of what an app links).
     // Robolectric gives the bridge tests the real main Looper channel replies
