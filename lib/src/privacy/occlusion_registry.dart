@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'occlusion_models.dart';
+import 'privacy_state.dart';
 
 /// One cached occlusion entry. Holds either a live reporter or, once
 /// detached, its last-known bounds for a short grace period.
@@ -15,8 +16,9 @@ class _Entry {
   int lastUpdatedMs = 0;
   bool attached = false;
   // Frozen alongside the bounds so a detached entry keeps the SAME render
-  // style through its grace window (the reporter is gone by then).
-  ReplayMaskStyle style = ReplayMaskStyle.blur;
+  // style through its grace window (the reporter is gone by then). Null: the
+  // global style, resolved when a frame is captured.
+  ReplayMaskStyle? style;
 }
 
 /// Holds the live set of [ReplayMask] regions and serves them to the native
@@ -36,6 +38,13 @@ class OcclusionRegistry with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _channel.setMethodCallHandler(_handleCall);
     SchedulerBinding.instance.addPersistentFrameCallback(_onFrame);
+    // Built by the first ReplayMask's build (no Replay.start before it), the
+    // registry is created mid-frame, and a persistent callback added then
+    // only runs from the next frame: until it does, the mask has no bounds
+    // and masks nothing. A post-frame callback added now runs at the end of
+    // this frame, after paint, so the bounds are there before a capture can
+    // read them.
+    SchedulerBinding.instance.addPostFrameCallback(_onFrame);
   }
 
   static final OcclusionRegistry instance = OcclusionRegistry._();
@@ -105,7 +114,15 @@ class OcclusionRegistry with WidgetsBindingObserver {
   Future<Object?> _handleCall(MethodCall call) async {
     switch (call.method) {
       case 'requestOcclusionRects':
-        return currentRects();
+        // Native maps a missing style to blur, so resolve the global style
+        // here: a rect never crosses the channel without one.
+        final int fallback = ReplayPrivacyState.globalMaskStyle.index;
+        return currentRects()
+            .map((Map<String, dynamic> r) => <String, dynamic>{
+                  ...r,
+                  'style': (r['style'] as int?) ?? fallback,
+                })
+            .toList();
       default:
         throw PlatformException(
           code: 'unsupported',
@@ -114,9 +131,10 @@ class OcclusionRegistry with WidgetsBindingObserver {
     }
   }
 
-  /// The current occlusion rectangles in **logical pixels**, each carrying
-  /// its view's `dpr` so the native bridge can convert per platform. Reads
-  /// the warm cache only — no layout work on this path.
+  /// The current occlusion rectangles in **logical pixels** of the root view,
+  /// each carrying its view's `dpr`. Reads the warm cache only — no layout
+  /// work on this path. `style` is null for a mask that sets none; the frame
+  /// capturer resolves it to the global style.
   List<Map<String, dynamic>> currentRects() {
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     _expireDetached(nowMs);
@@ -140,8 +158,9 @@ class OcclusionRegistry with WidgetsBindingObserver {
         'right': bounds.right,
         'bottom': bounds.bottom,
         'dpr': e.dpr,
-        // Native rebuilds the enum from this index (blur = 0, overlay = 1).
-        'style': e.style.index,
+        // Native rebuilds the enum from this index (blur = 0, overlay = 1,
+        // pixelate = 2).
+        'style': e.style?.index,
       });
     }
     return out;

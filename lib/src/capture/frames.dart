@@ -1,26 +1,32 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../privacy/occlusion_models.dart';
 import '../privacy/occlusion_registry.dart';
+import '../privacy/privacy_state.dart';
+import '../privacy/replay_mask_render_box.dart';
 import '../replay_channel.dart';
 
 /// Dart-side frame capture for Flutter.
 ///
-/// The native engine's screenshotter can't read Flutter's hardware
-/// `SurfaceView` on Android — `PixelCopy(Window)` returns the (black) window
-/// background, not the Flutter content. So we capture the rendered app via a
-/// root `RepaintBoundary` (`toImage` → PNG), exactly like the reference Flutter
-/// SDK, and ship frames to the native engine over the `reportFrame` channel;
-/// the native side packs them into the same frames archive. Native
-/// screenshotting is disabled for Flutter on Android (`captureSnapshotPixels =
-/// false` in the Android plugin) so frames are never captured twice.
+/// Our native screenshotters do not image Flutter's surface, so the app is
+/// imaged through the root RepaintBoundary installed by Replay.appBuilder
+/// (toImage -> PNG). Each frame goes over the reportFrame channel together
+/// with its mask rects; the native engine paints those rects, encodes the
+/// JPEG and packs the frames archive. Native screenshotting is off for
+/// Flutter on both platforms (captureSnapshotPixels = false in each plugin),
+/// so a frame is never captured twice.
 ///
-/// Occlusion already renders Dart-side via `ReplayMask` (a `RepaintBoundary`
-/// that paints the obscured content), so the captured image is pre-masked.
+/// The PNG is NOT pre-masked: ReplayMask paints nothing, it only reports its
+/// bounds. Rects are built in the same synchronous turn as the toImage call
+/// and in the boundary's own coordinate space, so they line up with the
+/// pixels while scrolling. A frame carries ReplayMask regions and
+/// platform-view placeholders; while occludeSensitiveScreen is on it carries
+/// one full-frame box instead. Unmasked pixels never leave the process.
 ///
 /// Frames are captured only while the app is on screen, like the native
 /// engines' own capture, which pauses when the app goes to the background and
@@ -72,6 +78,26 @@ class ReplayFrameCapture with WidgetsBindingObserver {
   /// Whether the periodic capture loop is running.
   @visibleForTesting
   bool get isCapturing => _timer != null;
+
+  /// Stands in for `RenderRepaintBoundary.toImage`, so a test can check what
+  /// had already run when the frame was imaged.
+  @visibleForTesting
+  Future<ui.Image> Function(RenderRepaintBoundary boundary, double pixelRatio)?
+      debugToImage;
+
+  /// Called each time a frame's mask rects have been built.
+  @visibleForTesting
+  void Function()? debugOnFrameRects;
+
+  /// Captures and reports one frame now, as a loop tick does.
+  @visibleForTesting
+  Future<void> debugCaptureOnce() => _capture();
+
+  /// The mask rects a frame of [boundary] imaged at [pixelRatio] would carry.
+  @visibleForTesting
+  List<Map<String, dynamic>> debugFrameRects(
+          RenderRepaintBoundary boundary, double pixelRatio) =>
+      _frameRects(boundary, pixelRatio);
 
   /// Wrap [child] in an `Overlay` + `RepaintBoundary`. Use as
   /// `MaterialApp(builder: Replay.appBuilder)`.
@@ -183,29 +209,29 @@ class ReplayFrameCapture with WidgetsBindingObserver {
         await WidgetsBinding.instance.endOfFrame
             .timeout(const Duration(milliseconds: 50));
       } catch (_) {/* proceed with whatever is current */}
+      if (!ro.attached || !ro.hasSize || ro.size.isEmpty) return;
       // Cap the pixel ratio so large/high-DPI screens don't produce huge PNGs;
       // the native side downscales again before JPEG.
       final double dpr =
           ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
       final double pr = dpr > 2.0 ? 2.0 : dpr;
-      final ui.Image image = await ro.toImage(pixelRatio: pr);
+      final Size size = ro.size;
+      // The rects and the image come from the same frame: toImage builds its
+      // scene from the current layer tree when it is called, and there is no
+      // await between these two lines for a scroll or a rebuild to slip into.
+      // If building the rects throws, no frame is sent.
+      List<Map<String, dynamic>> rects = _frameRects(ro, pr);
+      final ui.Image image =
+          await (debugToImage?.call(ro, pr) ?? ro.toImage(pixelRatio: pr));
       final ByteData? bytes =
           await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
       if (bytes == null) return;
-      // Occlusion rects (developer `ReplayMask` bounds) are in logical coords;
-      // scale to the captured PNG's pixels so the native encoder masks the
-      // right regions. Without this the Android frame applies no masking.
-      final List<Map<String, dynamic>> rects = OcclusionRegistry.instance
-          .currentRects()
-          .map((Map<String, dynamic> r) => <String, dynamic>{
-                'left': (r['left'] as num) * pr,
-                'top': (r['top'] as num) * pr,
-                'right': (r['right'] as num) * pr,
-                'bottom': (r['bottom'] as num) * pr,
-                'style': r['style'],
-              })
-          .toList();
+      // The screen turned sensitive while this frame was being encoded: cover
+      // it too.
+      if (ReplayPrivacyState.sensitiveScreen) {
+        rects = <Map<String, dynamic>>[fullFrame(size, pr)];
+      }
       // Fire-and-forget; never let frame capture throw into the app.
       await ReplayChannel.instance.invoke('reportFrame', <String, dynamic>{
         'bytes': bytes.buffer.asUint8List(),
@@ -217,5 +243,189 @@ class ReplayFrameCapture with WidgetsBindingObserver {
     } finally {
       _busy = false;
     }
+  }
+
+  // ── Mask rects ─────────────────────────────────────────────────────────
+
+  // Access pattern: one registry read (an in-memory cache, refreshed by the
+  // existing per-frame callback) plus one render-subtree walk per capture,
+  // about 2 per second. The reference tracker does the same walk on each
+  // capture.
+  List<Map<String, dynamic>> _frameRects(RenderRepaintBoundary b, double pr) {
+    try {
+      if (ReplayPrivacyState.sensitiveScreen) {
+        return <Map<String, dynamic>>[fullFrame(b.size, pr)];
+      }
+      final Matrix4 toRoot;
+      final List<Rect> platformViews;
+      try {
+        toRoot = b.getTransformTo(null);
+        platformViews = _platformViewRects(b,
+            collect: ReplayPrivacyState.maskPlatformViews);
+      } catch (_) {
+        // Can't place the masks: cover the whole frame instead.
+        return <Map<String, dynamic>>[fullFrame(b.size, pr)];
+      }
+      return rectsForFrame(
+        boundaryToRoot: toRoot,
+        size: b.size,
+        pixelRatio: pr,
+        masks: OcclusionRegistry.instance.currentRects(),
+        platformViews: platformViews,
+        defaultStyle: ReplayPrivacyState.globalMaskStyle.index,
+      );
+    } finally {
+      debugOnFrameRects?.call();
+    }
+  }
+
+  /// The rects a frame carries, in the PNG's pixels: each mask in [masks]
+  /// (logical pixels of the root view, as the registry reports them) moved
+  /// into the boundary's own space through [boundaryToRoot], and each
+  /// platform view in [platformViews] (logical pixels of the boundary), each
+  /// clipped to the frame and rounded outwards to whole pixels. A mask with no
+  /// style takes [defaultStyle]; a platform view is always a solid overlay.
+  /// Every rect carries a style: the native parsers read a missing one as
+  /// blur.
+  ///
+  /// Fails closed: masks that can't be placed (a singular transform, a
+  /// non-finite rect) give one rect covering the whole frame.
+  @visibleForTesting
+  static List<Map<String, dynamic>> rectsForFrame({
+    required Matrix4 boundaryToRoot,
+    required Size size,
+    required double pixelRatio,
+    required List<Map<String, dynamic>> masks,
+    required List<Rect> platformViews,
+    required int defaultStyle,
+  }) {
+    final Rect frame = Offset.zero & size;
+    final List<Map<String, dynamic>> out = <Map<String, dynamic>>[];
+    final Matrix4? inv = Matrix4.tryInvert(boundaryToRoot);
+    if (masks.isNotEmpty && inv == null) {
+      return <Map<String, dynamic>>[fullFrame(size, pixelRatio)];
+    }
+    for (final Map<String, dynamic> m in masks) {
+      final Rect root = Rect.fromLTRB(
+        (m['left'] as num).toDouble(),
+        (m['top'] as num).toDouble(),
+        (m['right'] as num).toDouble(),
+        (m['bottom'] as num).toDouble(),
+      );
+      final Rect local = MatrixUtils.transformRect(inv!, root).intersect(frame);
+      if (!local.isFinite) {
+        return <Map<String, dynamic>>[fullFrame(size, pixelRatio)];
+      }
+      if (local.isEmpty) continue; // outside the frame
+      out.add(_pixelRect(
+          local, pixelRatio, (m['style'] as int?) ?? defaultStyle));
+    }
+    for (final Rect r in platformViews) {
+      final Rect local = r.intersect(frame);
+      if (!local.isFinite) {
+        return <Map<String, dynamic>>[fullFrame(size, pixelRatio)];
+      }
+      if (local.isEmpty) continue;
+      out.add(_pixelRect(local, pixelRatio, ReplayMaskStyle.overlay.index));
+    }
+    return out;
+  }
+
+  /// One solid box over the whole frame: the PNG `toImage` makes of a
+  /// boundary of [size] at [pr] is `ceil(w * pr)` x `ceil(h * pr)`.
+  @visibleForTesting
+  static Map<String, dynamic> fullFrame(Size size, double pr) =>
+      <String, dynamic>{
+        'left': 0.0,
+        'top': 0.0,
+        'right': (size.width * pr).ceilToDouble(),
+        'bottom': (size.height * pr).ceilToDouble(),
+        'style': ReplayMaskStyle.overlay.index,
+      };
+
+  // Logical rect → PNG pixels, rounded outwards so no edge pixel is left
+  // uncovered.
+  static Map<String, dynamic> _pixelRect(Rect r, double pr, int style) =>
+      <String, dynamic>{
+        'left': (r.left * pr).floorToDouble(),
+        'top': (r.top * pr).floorToDouble(),
+        'right': (r.right * pr).ceilToDouble(),
+        'bottom': (r.bottom * pr).ceilToDouble(),
+        'style': style,
+      };
+
+  // ── Platform views ─────────────────────────────────────────────────────
+
+  /// The painted platform views under [boundary], in its logical pixels,
+  /// when [collect] is on. Flutter can't image them, so they are covered
+  /// whole. Debug builds also warn here about unmasked password fields.
+  List<Rect> _platformViewRects(RenderRepaintBoundary boundary,
+      {required bool collect}) {
+    final List<Rect> out = <Rect>[];
+    if (collect || kDebugMode) {
+      _visitPainted(boundary, boundary, out,
+          collect: collect, insideMask: false);
+    }
+    return out;
+  }
+
+  void _visitPainted(
+    RenderObject node,
+    RenderRepaintBoundary boundary,
+    List<Rect> out, {
+    required bool collect,
+    required bool insideMask,
+  }) {
+    node.visitChildren((RenderObject child) {
+      if (!_isPainted(node, child)) return;
+      // Type checks only: they survive --obfuscate.
+      final bool isPlatformView = child is PlatformViewRenderBox ||
+          child is RenderAndroidView ||
+          child is RenderUiKitView ||
+          child is TextureBox;
+      if (isPlatformView) {
+        if (collect && child is RenderBox && child.hasSize) {
+          out.add(MatrixUtils.transformRect(
+              child.getTransformTo(boundary), Offset.zero & child.size));
+        }
+        return; // never descend into a platform view
+      }
+      if (kDebugMode &&
+          !insideMask &&
+          child is RenderEditable &&
+          child.obscureText) {
+        _debugWarnUnmaskedPassword(child);
+      }
+      _visitPainted(child, boundary, out,
+          collect: collect,
+          insideMask: insideMask || child is ReplayMaskRenderBox);
+    });
+  }
+
+  /// Whether [parent] paints [child] into the current frame. paintsChild
+  /// covers Offstage, zero opacity and the like, but reports an offstage
+  /// route (an Overlay entry under an opaque one) and a hidden IndexedStack
+  /// child as painted. Their repaint boundaries are not painted, though, so
+  /// their layers are not in the layer tree toImage renders. Every platform
+  /// view is a repaint boundary itself, so this check covers each one.
+  static bool _isPainted(RenderObject parent, RenderObject child) =>
+      parent.paintsChild(child) &&
+      (!child.isRepaintBoundary ||
+          // `layer` is protected only to keep it out of paint code; reading
+          // it here changes nothing, and nothing public says whether a
+          // boundary is in the current layer tree.
+          // ignore: invalid_use_of_protected_member
+          (child.layer?.attached ?? false));
+
+  // One console line per field, not one per frame.
+  static final Expando<bool> _debugWarned = Expando<bool>();
+
+  static void _debugWarnUnmaskedPassword(RenderEditable field) {
+    if (_debugWarned[field] ?? false) return;
+    _debugWarned[field] = true;
+    debugPrint('replayfy_flutter: an obscureText text field is recorded '
+        'outside any ReplayMask. Flutter briefly shows each typed password '
+        'character on Android and iOS, so the replay can show it. Wrap the '
+        'field in ReplayMask. Field: ${field.debugCreator ?? field}');
   }
 }

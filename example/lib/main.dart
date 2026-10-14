@@ -21,7 +21,6 @@ void main() {
     await Replay.start(ReplayConfig(
       apiKey: 'rpl_pk_ef7e2fc8c7f952bcd0a69466e1a42a0625f9',
       apiHost: apiHost,
-      maskAllInputs: false,
     ));
 
     // Headless crash-test hook. Run with
@@ -76,6 +75,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String? _sessionId;
+  bool _sensitive = false;
 
   @override
   void initState() {
@@ -125,86 +125,134 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Replayfy Flutter Example')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text('Session: ${_sessionId ?? "—"}'),
-            const SizedBox(height: 24),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text('Session: ${_sessionId ?? "—"}'),
+              const SizedBox(height: 24),
 
-            // Anything inside <ReplayMask> is masked in playback per its
-            // style — blur (default), overlay (solid box), or pixelate
-            // (mosaic). Bounds are tracked in Dart and pulled by the engine.
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
+              // Anything inside <ReplayMask> is masked in playback per its
+              // style — a solid overlay (default), blur, or pixelate
+              // (mosaic). Bounds are tracked in Dart and sent with each
+              // frame.
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    children: <Widget>[
+                      ReplayMask(
+                        child: Text('default  4111 1111 1111 1111',
+                            style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                      ),
+                      SizedBox(height: 8),
+                      ReplayMask(
+                        maskStyle: ReplayMaskStyle.blur,
+                        child: Text('blur  4242 4242 4242 4242',
+                            style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                      ),
+                      SizedBox(height: 8),
+                      ReplayMask(
+                        maskStyle: ReplayMaskStyle.overlay,
+                        child: Text('overlay  012-34-5678',
+                            style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                      ),
+                      SizedBox(height: 8),
+                      ReplayMask(
+                        maskStyle: ReplayMaskStyle.pixelate,
+                        child: Text('pixelate  hunter2',
+                            style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Text fields are not masked automatically. The first password
+              // field is wrapped; the second is not, to show why it should be:
+              // Flutter briefly shows each typed character, so the replay can
+              // show it (debug builds log a warning for that field).
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   children: <Widget>[
                     ReplayMask(
-                      child: Text('blur  4242 4242 4242 4242',
-                          style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                      child: TextField(
+                        obscureText: true,
+                        decoration:
+                            InputDecoration(labelText: 'Password (masked)'),
+                      ),
                     ),
-                    SizedBox(height: 8),
-                    ReplayMask(
-                      maskStyle: ReplayMaskStyle.overlay,
-                      child: Text('overlay  012-34-5678',
-                          style: TextStyle(fontSize: 18, letterSpacing: 1)),
-                    ),
-                    SizedBox(height: 8),
-                    ReplayMask(
-                      maskStyle: ReplayMaskStyle.pixelate,
-                      child: Text('pixelate  hunter2',
-                          style: TextStyle(fontSize: 18, letterSpacing: 1)),
+                    TextField(
+                      obscureText: true,
+                      decoration:
+                          InputDecoration(labelText: 'Password (NOT masked)'),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
 
-            FilledButton(
-              onPressed: () => Replay.track('cta_tapped',
-                  properties: <String, dynamic>{'screen': 'Home'}),
-              child: const Text('Track event'),
-            ),
-            OutlinedButton(
-              onPressed: _makeRequest,
-              child: const Text('Make network request'),
-            ),
-            OutlinedButton(
-              // Captured as a $console event via runZoned's print hook.
-              onPressed: () => debugPrint('Replayfy demo log line'),
-              child: const Text('Log a message'),
-            ),
-            OutlinedButton(
-              // A throw in a callback is reported via FlutterError.onError,
-              // which ReplayErrorCapture forwards as a $exception (fatal:false).
-              onPressed: () => throw StateError('demo: handled error'),
-              child: const Text('Trigger handled error'),
-            ),
-            OutlinedButton(
-              // An uncaught async error escapes to PlatformDispatcher.onError,
-              // forwarded as a $exception (fatal:true) — the Dart analogue of
-              // an unhandled crash. The app keeps running (the engine catches
-              // native signals separately).
-              onPressed: () => Future<void>.delayed(
-                Duration.zero,
-                () => throw StateError('demo: fatal async error'),
+              // Covers the whole frame with a solid box and stops recording
+              // touches until it is switched off.
+              SwitchListTile(
+                title: const Text('Sensitive screen'),
+                value: _sensitive,
+                onChanged: (bool on) {
+                  setState(() => _sensitive = on);
+                  Replay.occludeSensitiveScreen(on);
+                },
               ),
-              child: const Text('Trigger fatal async error'),
-            ),
-            TextButton(
-              onPressed: () async {
-                await Replay.startNewSession();
-                await _refreshSession();
-              },
-              child: const Text('Start new session'),
-            ),
-            TextButton(
-              onPressed: () => Replay.cancelSession(),
-              child: const Text('cancelSession (discard)'),
-            ),
-          ],
+              const SizedBox(height: 8),
+
+              FilledButton(
+                onPressed: () => Replay.track('cta_tapped',
+                    properties: <String, dynamic>{'screen': 'Home'}),
+                child: const Text('Track event'),
+              ),
+              OutlinedButton(
+                onPressed: _makeRequest,
+                child: const Text('Make network request'),
+              ),
+              OutlinedButton(
+                // Captured as a $console event via runZoned's print hook.
+                onPressed: () => debugPrint('Replayfy demo log line'),
+                child: const Text('Log a message'),
+              ),
+              OutlinedButton(
+                // A throw in a callback is reported via FlutterError.onError,
+                // which ReplayErrorCapture forwards as a $exception
+                // (fatal:false).
+                onPressed: () => throw StateError('demo: handled error'),
+                child: const Text('Trigger handled error'),
+              ),
+              OutlinedButton(
+                // An uncaught async error escapes to
+                // PlatformDispatcher.onError, forwarded as a $exception
+                // (fatal:true) — the Dart analogue of an unhandled crash. The
+                // app keeps running (the engine catches native signals
+                // separately).
+                onPressed: () => Future<void>.delayed(
+                  Duration.zero,
+                  () => throw StateError('demo: fatal async error'),
+                ),
+                child: const Text('Trigger fatal async error'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await Replay.startNewSession();
+                  await _refreshSession();
+                },
+                child: const Text('Start new session'),
+              ),
+              TextButton(
+                onPressed: () => Replay.cancelSession(),
+                child: const Text('cancelSession (discard)'),
+              ),
+            ],
+          ),
         ),
       ),
     );

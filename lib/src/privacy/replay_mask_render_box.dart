@@ -34,16 +34,17 @@ class ReplayMaskRenderBox extends RenderProxyBox
     implements OcclusionBoundsReporter {
   ReplayMaskRenderBox({
     required OcclusionRegistry registry,
-    this.maskStyle = ReplayMaskStyle.blur,
+    this.maskStyle,
   }) : _registry = registry;
 
   final OcclusionRegistry _registry;
 
-  /// How this region renders (blur / overlay). Mutable — [ReplayMask]'s
-  /// `updateRenderObject` reassigns it when the widget's `maskStyle` prop
-  /// changes. Satisfies [OcclusionBoundsReporter.maskStyle].
+  /// How this region renders (overlay / blur / pixelate), or null for the
+  /// global style. Mutable — [ReplayMask]'s `updateRenderObject` reassigns it
+  /// when the widget's `maskStyle` prop changes. Satisfies
+  /// [OcclusionBoundsReporter.maskStyle].
   @override
-  ReplayMaskStyle maskStyle;
+  ReplayMaskStyle? maskStyle;
 
   static const int _windowMs = 100;
   static const int _layerDetachGraceMs = 500;

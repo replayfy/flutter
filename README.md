@@ -12,7 +12,7 @@ and fix bugs from a real reproduction instead of a guess.
 - **Product analytics** — funnels, custom events, and user journeys from `identify` and `track`.
 - **Error & crash monitoring** — automatic capture of unhandled errors and crashes, plus manual `captureException`.
 - **Automatic capture** — screens, taps, network requests, console output, performance vitals, and device info, out of the box.
-- **Privacy-first masking** — blur, cover, or pixelate any sensitive widget; mask all inputs with one flag; nothing sensitive leaves the device.
+- **Privacy-first masking** — cover, blur, or pixelate any sensitive widget; platform views (WebView, maps, video) are covered for you; nothing sensitive leaves the device.
 - **Remote configuration** — tune capture from the dashboard without shipping a new build.
 - **GDPR-ready** — a persistent per-user opt-out kill switch.
 
@@ -26,7 +26,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  replayfy_flutter: ^0.0.9
+  replayfy_flutter: ^0.0.10
 ```
 
 ### Android (JitPack)
@@ -91,7 +91,8 @@ Every option on `ReplayConfig`:
 | `recordConsole` | `bool` | `true` | Capture console output (`print` / `debugPrint`). Requires `Replay.runZoned`. |
 | `recordErrors` | `bool` | `true` | Capture unhandled errors and crashes. |
 | `recordPerformance` | `bool` | `true` | Capture performance vitals (cold start, frame drops, memory, thermal, battery). |
-| `maskAllInputs` | `bool` | `false` | Automatically mask every text input. |
+| `maskAllInputs` | `bool` | `false` | Deprecated. No effect on Flutter widgets. |
+| `maskPlatformViews` | `bool` | `true` | Covers platform views (WebView, maps, camera/video textures) with a solid placeholder; Flutter cannot image them. |
 | `autoScreenName` | `bool` | `true` | Automatically tag screens from the navigator. |
 | `useRemoteConfig` | `bool` | `true` | Let the dashboard override capture settings remotely. |
 | `debug` | `bool` | `false` | Verbose SDK logging. |
@@ -218,31 +219,50 @@ final userUrl = await Replay.urlForCurrentUser();       // String?
 
 Replayfy is built to keep sensitive data off the wire.
 
-**Mask a widget** — wrap anything sensitive; it is blurred (default), covered,
-or pixelated in the recording:
+**Mask a widget** — wrap anything sensitive; it is covered with a solid box
+(default), blurred, or pixelated in the recording. A tap inside it is recorded
+without its text:
 
 ```dart
 ReplayMask(
-  maskStyle: ReplayMaskStyle.blur, // .blur | .overlay | .pixelate
+  maskStyle: ReplayMaskStyle.overlay, // .overlay (default) | .blur | .pixelate
   child: Text('•••• •••• •••• 4242'),
 );
 ```
 
-**Set the global mask style** for bulk-occluded and whole-screen regions:
+Text fields, including obscureText password fields, are not masked automatically. Flutter briefly shows each typed password character on Android and iOS, so wrap every sensitive field in ReplayMask.
+
+```dart
+ReplayMask(child: TextField(obscureText: true));
+```
+
+In debug builds, Replayfy logs a warning for each `obscureText` field it
+records outside a `ReplayMask`.
+
+**Set the default mask style** for every `ReplayMask` that sets no
+`maskStyle`:
 
 ```dart
 await Replay.setMaskStyle(ReplayMaskStyle.pixelate);
 ```
 
-**Bulk & whole-screen masking:**
+**Whole-screen masking** — cover the entire recorded frame with a solid box
+(a payment or account screen, say). Touches are not recorded meanwhile unless
+you pass `hideGestures: false`. It stays on, across sessions, until you turn it
+off:
 
 ```dart
-await Replay.occludeAllTextFields(true);      // all text fields
-await Replay.occludeAllTextView(true);        // all multi-line text views
 await Replay.occludeSensitiveScreen(true);    // the entire screen
+await Replay.occludeSensitiveScreen(false);   // back to normal
 ```
 
-Or mask every input from the start with `maskAllInputs: true` in `ReplayConfig`.
+**Platform views** — Flutter cannot image a platform view (WebView, maps,
+camera and video textures), so each one is covered with a solid placeholder.
+Turn it off with `maskPlatformViews: false` in `ReplayConfig`.
+
+`occludeAllTextFields`, `occludeAllTextView` and `maskAllInputs` are
+deprecated: they mask the app's native text views only, and Flutter text
+fields are not native views.
 
 **GDPR opt-out** — a persistent kill switch that survives relaunches:
 

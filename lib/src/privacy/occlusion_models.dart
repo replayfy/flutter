@@ -1,7 +1,7 @@
 import 'dart:ui';
 
 /// How a `ReplayMask` region is rendered in the recording. Mirrors the native
-/// engines' `ReplayMaskStyle` (and the reference SDK's occlusion types):
+/// engines' `ReplayMaskStyle`:
 ///
 ///  - [blur]     — the underlying pixels are blurred.
 ///  - [overlay]  — a solid box is painted over the region (no pixel survives).
@@ -30,8 +30,9 @@ abstract class OcclusionBoundsReporter {
   /// Logical-to-device pixel ratio for the view hosting this box.
   double get devicePixelRatio;
 
-  /// How this region should be rendered (blur / overlay).
-  ReplayMaskStyle get maskStyle;
+  /// How this region should be rendered, or null for the global style
+  /// (`Replay.setMaskStyle`), which is resolved when a frame is captured.
+  ReplayMaskStyle? get maskStyle;
 
   /// Whether the render object is currently attached to the pipeline.
   bool get attached;

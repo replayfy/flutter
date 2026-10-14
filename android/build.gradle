@@ -67,8 +67,11 @@ dependencies {
     // across background/resume and drops the ones reported in the background.
     // It is also the first whose engine stop calls back once the session's
     // uploads have settled, which the plugin's stopApplicationAndUploadData
-    // waits on without blocking the main thread.
-    implementation "app.replayfy:android-sdk:0.0.6"
+    // waits on without blocking the main thread. 0.0.7 blacks out the frames
+    // a Flutter app reports while its window is FLAG_SECURE, covers them while
+    // the whole screen is occluded, and rounds mask edges outward when it
+    // scales a frame down.
+    implementation "app.replayfy:android-sdk:0.0.7"
 
     // JVM unit tests (development only; not part of what an app links).
     // Robolectric gives the bridge tests the real main Looper channel replies

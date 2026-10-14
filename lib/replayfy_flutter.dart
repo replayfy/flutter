@@ -24,6 +24,7 @@ import 'src/capture/gestures.dart';
 import 'src/capture/network.dart';
 import 'src/privacy/occlusion_models.dart';
 import 'src/privacy/occlusion_registry.dart';
+import 'src/privacy/privacy_state.dart';
 import 'src/replay_channel.dart';
 import 'src/replay_config.dart';
 
@@ -65,13 +66,14 @@ class Replay {
     // capture is disabled for Flutter sessions in the iOS/Android plugins, so
     // a touch is never recorded twice.
     ReplayGestureCapture.install();
-    // Neither native screenshotter can read Flutter's surface (Android's
+    // Our native screenshotters do not image Flutter's surface (Android's
     // SurfaceView → black frames; iOS would need a separate rect pull that
     // trailed scroll), so capture frames Dart-side via the root
     // RepaintBoundary on BOTH platforms and ship each frame with its occlusion
     // rects in the same payload — no poll, no mask lag. Requires the app to use
     // `MaterialApp(builder: Replay.appBuilder)`. Capture runs only while the
     // app is on screen (it stops in the background and restarts on return).
+    ReplayPrivacyState.maskPlatformViews = config.maskPlatformViews;
     if (config.recordScreen) {
       ReplayFrameCapture.instance.install();
     }
@@ -273,16 +275,34 @@ class Replay {
   static Future<bool> isOptedOut() async =>
       (await _ch.get<bool>('isOptedOut')) ?? false;
 
-  /// Auto-occlude every text field for the rest of the session.
+  /// Auto-occlude the host's native text fields (`EditText` /
+  /// `UITextField`). Flutter text fields are not native views, so this masks
+  /// none of them: wrap sensitive fields in [ReplayMask].
+  @Deprecated('Has no effect on Flutter widgets: Flutter text fields are not '
+      'native text views. Wrap sensitive fields in ReplayMask.')
   static Future<void> occludeAllTextFields(bool occlude) =>
       _ch.invoke('occludeAllTextFields', <String, dynamic>{'occlude': occlude});
 
-  /// Occlude the entire screen (e.g. a sensitive flow).
-  static Future<void> occludeSensitiveScreen(bool occlude) =>
-      _ch.invoke('occludeSensitiveScreen', <String, dynamic>{'occlude': occlude});
+  /// Covers the whole recorded frame with a solid box until called with
+  /// false. Touches are not recorded meanwhile unless [hideGestures] is
+  /// false.
+  ///
+  /// Stays on across [stop], [startNewSession] and [cancelSession].
+  static Future<void> occludeSensitiveScreen(bool occlude,
+      {bool hideGestures = true}) {
+    // Before the native call, so a frame captured while it is in flight is
+    // already covered.
+    ReplayPrivacyState.sensitiveScreen = occlude;
+    ReplayPrivacyState.hideGesturesOnSensitiveScreen = hideGestures;
+    return _ch.invoke(
+        'occludeSensitiveScreen', <String, dynamic>{'occlude': occlude});
+  }
 
-  /// Occlude all multi-line text views in screenshots (parity with the
-  /// native SDKs' `occludeAllTextView`; complements [occludeAllTextFields]).
+  /// Occlude the host's native multi-line text views (parity with the native
+  /// SDKs' `occludeAllTextView`). Flutter text is not a native view, so this
+  /// masks none of it: wrap sensitive widgets in [ReplayMask].
+  @Deprecated('Has no effect on Flutter widgets: Flutter text fields are not '
+      'native text views. Wrap sensitive fields in ReplayMask.')
   static Future<void> occludeAllTextView(bool occlude) =>
       _ch.invoke('occludeAllTextView', <String, dynamic>{'occlude': occlude});
 
@@ -313,14 +333,15 @@ class Replay {
         'properties': <String, dynamic>{'level': level, 'message': message},
       });
 
-  /// Set the global mask render style — [ReplayMaskStyle.blur] (default),
-  /// [ReplayMaskStyle.overlay] (a solid box), or [ReplayMaskStyle.pixelate]
-  /// (coarse mosaic blocks). Applies to bulk-occluded text, whole-screen
-  /// occlusion, and any [ReplayMask] that doesn't set its own `maskStyle`.
-  /// Per-region styles (passed on the [ReplayMask] widget) ride the occlusion
-  /// pull channel and override this for that region.
-  static Future<void> setMaskStyle(ReplayMaskStyle style) =>
-      _ch.invoke('setMaskStyle', <String, dynamic>{'style': style.index});
+  /// Default style for [ReplayMask] regions that set no `maskStyle`:
+  /// [ReplayMaskStyle.overlay] (a solid box, the default),
+  /// [ReplayMaskStyle.blur], or [ReplayMaskStyle.pixelate] (coarse mosaic
+  /// blocks). A `maskStyle` passed on the widget wins for that region.
+  /// [occludeSensitiveScreen] always covers the frame with a solid box.
+  static Future<void> setMaskStyle(ReplayMaskStyle style) {
+    ReplayPrivacyState.globalMaskStyle = style;
+    return _ch.invoke('setMaskStyle', <String, dynamic>{'style': style.index});
+  }
 
   // ── Configuration ──────────────────────────────────────────────────────
 

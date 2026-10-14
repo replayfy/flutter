@@ -23,6 +23,7 @@ void main() {
       const c = ReplayConfig(
         apiKey: 'k',
         apiHost: 'u',
+        // ignore: deprecated_member_use_from_same_package
         maskAllInputs: true,
         recordNetwork: true,
       );
@@ -146,8 +147,20 @@ void main() {
       expect(h, closeTo(40, 2));
       expect(r['dpr'], greaterThan(0));
       expect(r['id'], isA<int>());
-      // Default style is blur (index 0).
-      expect(r['style'], ReplayMaskStyle.blur.index);
+      // No maskStyle on the widget: the cache holds no style, and a frame
+      // resolves it to the global one (a solid overlay unless changed).
+      expect(r['style'], isNull);
+      expect(
+        ReplayFrameCapture.rectsForFrame(
+          boundaryToRoot: Matrix4.identity(),
+          size: const Size(4000, 4000),
+          pixelRatio: 1.0,
+          masks: rects,
+          platformViews: const <Rect>[],
+          defaultStyle: ReplayMaskStyle.overlay.index,
+        ).first['style'],
+        ReplayMaskStyle.overlay.index,
+      );
     });
 
     testWidgets('per-region maskStyle propagates to the pulled rect',

@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'replayfy_flutter'
-  s.version          = '0.0.9'
+  s.version          = '0.0.10'
   s.summary          = 'Replayfy session replay & analytics for Flutter (iOS).'
   s.description      = 'Thin Flutter plugin over the native Replayfy iOS SDK.'
   s.homepage         = 'https://replayfy.app'
@@ -22,8 +22,11 @@ Pod::Spec.new do |s|
   # recency now, so there is no Socket.IO subspec to opt into. 0.0.5 is the
   # first release that keeps frames across background/resume and never takes
   # native (unmasked) screenshots for a Flutter host; 0.0.6 drops the frames a
-  # Flutter host reports while the app is in the background.
-  s.dependency 'Replayfy', '>= 0.0.6'
+  # Flutter host reports while the app is in the background; 0.0.7 covers a
+  # mask with a solid box when it can't blur it, blurs right up to the mask's
+  # edges, and covers the frames a Flutter host reports while the whole screen
+  # is occluded.
+  s.dependency 'Replayfy', '>= 0.0.7'
 
   # Replayfy is a static framework (it links PLCrashReporter's static
   # xcframework), and a pod that depends on one must be static too, or a
