@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -12,24 +14,31 @@ class _BoundsSample {
 }
 
 /// Render object behind [ReplayMask]. Tracks the global bounds of its subtree
-/// every frame and reports them to the [OcclusionRegistry], which the native
-/// engine pulls at capture rate.
+/// every frame and reports them to the [OcclusionRegistry], which each
+/// captured frame reads.
 ///
 /// Flutter paints everything into one surface, so there is no native view to
 /// hand to the engine the way the iOS/Android/React Native SDKs do — bounds
-/// must be computed here and pulled across. The hard part is correctness
-/// under motion: scrolling lists, `IndexedStack` tab switches, page
-/// transitions that detach layers, and clips. The mitigations below mirror
-/// the field-proven tolerances of mature Flutter occlusion implementations:
+/// must be computed here and sent with each frame. The hard part is
+/// correctness under motion: scrolling lists, `IndexedStack` tab switches,
+/// page transitions that detach layers, and clips. The mitigations below
+/// mirror the field-proven tolerances of mature Flutter occlusion
+/// implementations:
 ///
 ///  * a short **sliding-window union** (100 ms) so a one-frame layout blip
 ///    never unmasks sensitive pixels,
-///  * a **layer-detach grace** (500 ms) so a snapshotted page transition
-///    keeps masking while its layer is briefly detached,
+///  * a **layer-detach grace** (500 ms) so a mask keeps masking while its
+///    layer is briefly detached,
 ///  * **snap-to-device-pixels** so the rect lands on integer device pixels
 ///    and never leaves a 1px sliver of unmasked content,
 ///  * **visibility gating** so an off-screen list row or hidden tab does not
 ///    report stale bounds.
+///
+/// Stricter than those: while a [SnapshotWidget] draws this subtree as an
+/// image (the zoom page transition does, on both the page coming in and the
+/// page going out), the mask covers the whole view. The snapshot is drawn
+/// with a transform the render tree doesn't report, so its pixels can't be
+/// placed, and the page coming in has no bounds before the snapshot either.
 class ReplayMaskRenderBox extends RenderProxyBox
     implements OcclusionBoundsReporter {
   ReplayMaskRenderBox({
@@ -217,6 +226,13 @@ class ReplayMaskRenderBox extends RenderProxyBox
         .instance.platformDispatcher.views.first.devicePixelRatio;
   }
 
+  Size _viewSize() {
+    final BuildContext? ctx = _context;
+    final ui.FlutterView view = (ctx != null ? View.maybeOf(ctx) : null) ??
+        WidgetsBinding.instance.platformDispatcher.views.first;
+    return view.physicalSize / view.devicePixelRatio;
+  }
+
   int _viewId() {
     final BuildContext? ctx = _context;
     if (ctx != null) {
@@ -243,6 +259,56 @@ class ReplayMaskRenderBox extends RenderProxyBox
       return true;
     }
     _layerDetachedSinceMs = null;
+    return false;
+  }
+
+  /// The whole view, in root logical pixels, while an ancestor
+  /// [SnapshotWidget] draws this subtree as an image; else null. Called only
+  /// while this box's layer is detached: a snapshot paints the subtree into
+  /// a layer of its own, outside the tree that is captured. Fails closed: a
+  /// lookup that throws counts as a snapshot.
+  Rect? _snapshotCover() {
+    final BuildContext? ctx = _context;
+    if (ctx is! Element) return null;
+    bool snapshotted = false;
+    try {
+      // Not painted at all (a hidden or offstage subtree): not in a snapshot
+      // either.
+      if (_isInvisible()) return null;
+      // SnapshotWidget's render object is private; its widget is public.
+      // Transitions nest them (the zoom transition's page coming in holds the
+      // one that would zoom it out), so any one of them may be drawing.
+      ctx.visitAncestorElements((Element e) {
+        final Widget w = e.widget;
+        if (w is SnapshotWidget &&
+            w.controller.allowSnapshotting &&
+            _inCapturedTree(e.renderObject)) {
+          snapshotted = true;
+          return false;
+        }
+        return true;
+      });
+    } catch (_) {
+      snapshotted = true; // can't tell: cover
+    }
+    return snapshotted ? Offset.zero & _viewSize() : null;
+  }
+
+  /// Whether [node] is drawn into the layer tree that is captured: the
+  /// nearest repaint boundary at or above it has its layer attached. A
+  /// covered route's snapshot can still be switched on, but the route is not
+  /// drawn at all.
+  static bool _inCapturedTree(RenderObject? node) {
+    RenderObject? n = node;
+    while (n != null) {
+      if (n.isRepaintBoundary) {
+        // `layer` is protected only to keep it out of paint code; reading it
+        // here changes nothing.
+        // ignore: invalid_use_of_protected_member
+        return n.layer?.attached ?? false;
+      }
+      n = n.parent;
+    }
     return false;
   }
 
@@ -274,9 +340,18 @@ class ReplayMaskRenderBox extends RenderProxyBox
 
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // During a snapshotted page transition the layer briefly detaches. Keep
-    // masking with the last bounds for the grace window rather than flicker.
     if (_layerDetached(nowMs)) {
+      // Painted as a snapshot image this frame: cover the whole view, since
+      // its pixels can be anywhere. Not kept as _lastBounds, so the cover
+      // ends with the snapshot.
+      final Rect? cover = _snapshotCover();
+      if (cover != null) {
+        _push(cover, nowMs);
+        return;
+      }
+      // Otherwise (a route just covered, a list row being recycled) keep
+      // masking with the last bounds for the grace window rather than
+      // flicker.
       final int detachedMs = nowMs - (_layerDetachedSinceMs ?? nowMs);
       if (detachedMs > _layerDetachGraceMs) {
         _window.clear();

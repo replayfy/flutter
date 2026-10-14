@@ -17,8 +17,13 @@ import org.json.JSONObject
 /**
  * Flutter bridge for Replayfy on Android. Thin forwarder onto the native
  * `Replay` SDK (which drives the live recording engine). The engine handles
- * screenshots, taps, performance, and crashes itself; this plugin forwards
- * the public API and drives the **pull-based masking**:
+ * performance and crashes itself; Dart captures the frames and taps and
+ * reports them here (`reportFrame`, `reportTap`), each frame with its own
+ * mask rects.
+ *
+ * The plugin also still runs the older **pull-based masking**, which feeds
+ * only the engine's own screenshotter (off for Flutter apps,
+ * `captureSnapshotPixels = false`):
  *
  *  1. The Dart side keeps a warm cache of `<ReplayMask>` rects.
  *  2. Here, a lightweight main-thread loop pulls that cache over the
@@ -28,9 +33,6 @@ import org.json.JSONObject
  *  3. We compose the engine's `privacyRectsProvider` so each screenshot reads
  *     the freshest pulled rects synchronously, with zero IPC on the capture
  *     path.
- *
- * Pull (not push) is the point: IPC scales with the ~3 fps capture, not with
- * Flutter's 60–120 fps rebuilds.
  */
 class ReplayfyFlutterPlugin internal constructor(
   // Ends the session at once on the calling thread, then calls back once its
@@ -189,12 +191,15 @@ class ReplayfyFlutterPlugin internal constructor(
         Replay.occludeAllTextFields(call.argument("occlude") ?: false); result.success(null)
       }
       "occludeSensitiveScreen" -> {
+        // The native engine has no hideGestures: it doesn't capture Flutter
+        // touches (captureTouch = false), and Dart drops or blanks the ones it
+        // reports while the screen is occluded.
         Replay.occludeSensitiveScreen(call.argument("occlude") ?: false); result.success(null)
       }
       "setMaskStyle" -> {
-        // Global default style for bulk/whole-screen occlusion + any ReplayMask
-        // that doesn't carry its own style. Per-region styles still override
-        // via the pulled rects.
+        // The engine's global style (its native capture, which Flutter frames
+        // don't use). Dart frames send each rect's style resolved in Dart, so
+        // a ReplayMask without one follows Replay.setMaskStyle there.
         Replay.setMaskStyle(ReplayMaskStyle.from(call.argument<Int>("style") ?: 0))
         result.success(null)
       }

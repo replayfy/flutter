@@ -230,6 +230,10 @@ ReplayMask(
 );
 ```
 
+A mask follows its widget as it scrolls and moves. While a page transition
+draws a masked page as a snapshot image (the zoom page transition does), the
+whole frame is covered instead.
+
 Text fields, including obscureText password fields, are not masked automatically. Flutter briefly shows each typed password character on Android and iOS, so wrap every sensitive field in ReplayMask.
 
 ```dart
@@ -248,8 +252,8 @@ await Replay.setMaskStyle(ReplayMaskStyle.pixelate);
 
 **Whole-screen masking** — cover the entire recorded frame with a solid box
 (a payment or account screen, say). Touches are not recorded meanwhile unless
-you pass `hideGestures: false`. It stays on, across sessions, until you turn it
-off:
+you pass `hideGestures: false`; then they keep their position but not the text
+they hit. It stays on, across sessions, until you turn it off:
 
 ```dart
 await Replay.occludeSensitiveScreen(true);    // the entire screen
@@ -257,8 +261,9 @@ await Replay.occludeSensitiveScreen(false);   // back to normal
 ```
 
 **Platform views** — Flutter cannot image a platform view (WebView, maps,
-camera and video textures), so each one is covered with a solid placeholder.
-Turn it off with `maskPlatformViews: false` in `ReplayConfig`.
+camera and video textures), so the part of each one that shows is covered with
+a solid placeholder. Turn it off with `maskPlatformViews: false` in
+`ReplayConfig`.
 
 `occludeAllTextFields`, `occludeAllTextView` and `maskAllInputs` are
 deprecated: they mask the app's native text views only, and Flutter text

@@ -9,7 +9,8 @@ APIs now apply to them.
   reach only the native screenshotter, which a Flutter app doesn't use, so
   the screen was recorded as is. Every frame is now one solid box until you
   call `occludeSensitiveScreen(false)`, and touches are not recorded
-  meanwhile; pass `hideGestures: false` to keep them. It stays on across
+  meanwhile; pass `hideGestures: false` to keep them, on both platforms,
+  without the text they hit (their label is `***`). It stays on across
   `stop`, `startNewSession` and `cancelSession`.
 - **Masks are solid by default.** A `ReplayMask` without a `maskStyle` is now
   a solid box (`ReplayMaskStyle.overlay`); it was a blur. Pass
@@ -21,12 +22,18 @@ APIs now apply to them.
   means that style.
 - **Platform views are covered.** Flutter can't image a WebView, a map, or a
   camera or video texture, so each one painted on screen is now covered with
-  a solid placeholder. Turn this off with the new
+  a solid placeholder, as far as it shows (a WebView scrolled partly out of a
+  list is covered only inside the list). Turn this off with the new
   `ReplayConfig.maskPlatformViews: false`.
-- Masks no longer trail the content while it scrolls or animates: a frame's
+- Masks no longer trail the content while it scrolls or moves: a frame's
   mask rects are taken from the same frame as its image. They were read after
   the frame had been encoded, so a mask could land where the content had been
   a moment before.
+- While a page transition draws a page with a `ReplayMask` as a snapshot
+  image, as the zoom page transition does, the whole frame is covered. Masks
+  can't follow how the snapshot is scaled. Before, a page coming in showed
+  its masked content until the transition ended, and a page going out could
+  show a strip of it beside a mask.
 - Masks land in the right place when `Replay.appBuilder` isn't at the
   screen's top-left corner (a `builder` that wraps it in padding or a
   `SafeArea`, say), and their edges are rounded outward to whole pixels, so

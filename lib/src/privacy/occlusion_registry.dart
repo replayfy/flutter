@@ -21,18 +21,13 @@ class _Entry {
   ReplayMaskStyle? style;
 }
 
-/// Holds the live set of [ReplayMask] regions and serves them to the native
-/// engine on demand — the **pull** model.
+/// Holds the live set of [ReplayMask] regions in a warm cache, refreshed each
+/// frame with cheap matrix math and no IPC.
 ///
-/// Why pull, not push: Flutter rebuilds at display rate (60–120 fps) but the
-/// engine only screenshots at ~3 fps. Pushing rects every frame would cross
-/// the platform channel 20–40× more often than the data is ever read. Instead
-/// we keep a warm cache here (refreshed each frame with cheap matrix math, no
-/// IPC) and let native call [_handleCall] right before each capture. IPC then
-/// happens at capture rate, and the response does no layout work — it just
-/// reads the cache. This is the mechanism mature Flutter session-replay SDKs
-/// converged on, and it maps cleanly onto our engines' existing
-/// `privacyRectsProvider` hook.
+/// The Dart frame capturer reads the cache ([currentRects], no layout work)
+/// in the same turn as it images a frame, and sends the rects with that
+/// frame. The Android plugin also still pulls it through [_handleCall] for
+/// the engine's own screenshotter, which Flutter apps run with off.
 class OcclusionRegistry with WidgetsBindingObserver {
   OcclusionRegistry._() {
     WidgetsBinding.instance.addObserver(this);

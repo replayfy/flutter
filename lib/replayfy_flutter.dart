@@ -285,7 +285,8 @@ class Replay {
 
   /// Covers the whole recorded frame with a solid box until called with
   /// false. Touches are not recorded meanwhile unless [hideGestures] is
-  /// false.
+  /// false; then they keep their position but not the text they hit (their
+  /// label is `***`).
   ///
   /// Stays on across [stop], [startNewSession] and [cancelSession].
   static Future<void> occludeSensitiveScreen(bool occlude,
@@ -294,8 +295,12 @@ class Replay {
     // already covered.
     ReplayPrivacyState.sensitiveScreen = occlude;
     ReplayPrivacyState.hideGesturesOnSensitiveScreen = hideGestures;
-    return _ch.invoke(
-        'occludeSensitiveScreen', <String, dynamic>{'occlude': occlude});
+    // The native iOS engine drops the touches the app reports unless told
+    // to keep them, so it gets hideGestures too.
+    return _ch.invoke('occludeSensitiveScreen', <String, dynamic>{
+      'occlude': occlude,
+      'hideGestures': hideGestures,
+    });
   }
 
   /// Occlude the host's native multi-line text views (parity with the native

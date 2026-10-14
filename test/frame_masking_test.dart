@@ -240,12 +240,17 @@ void main() {
         px(0, 0, 800, 1600, overlay),
       ]);
       final MethodCall call = named('occludeSensitiveScreen').single;
-      expect(call.arguments, <String, dynamic>{'occlude': true});
+      expect(call.arguments,
+          <String, dynamic>{'occlude': true, 'hideGestures': true});
 
-      // Not ended by the session ending.
+      // Not ended by the session ending, a new session or a discarded one.
       await Replay.stop();
+      await Replay.startNewSession();
+      await Replay.cancelSession();
       expect(ReplayPrivacyState.sensitiveScreen, isTrue);
-      expect(capture.debugFrameRects(b, 2.0), hasLength(1));
+      expect(capture.debugFrameRects(b, 2.0), <Map<String, dynamic>>[
+        px(0, 0, 800, 1600, overlay),
+      ]);
 
       await Replay.occludeSensitiveScreen(false);
       expect(capture.debugFrameRects(b, 2.0), normal);
@@ -278,6 +283,40 @@ void main() {
 
       ReplayPrivacyState.maskPlatformViews = false;
       expect(capture.debugFrameRects(b, 2.0), isEmpty);
+    });
+
+    testWidgets('cover only the part their ancestors\' clips show',
+        (WidgetTester tester) async {
+      // A 300 px texture in a list, scrolled 200 px up under the list's top
+      // edge, which sits 100 px down the screen (below an app bar, say).
+      final ScrollController scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      final RenderRepaintBoundary b = await pumpCaptured(
+        tester,
+        Stack(children: <Widget>[
+          at(
+            0,
+            100,
+            400,
+            400,
+            ListView(controller: scroll, children: const <Widget>[
+              SizedBox(height: 300, child: Texture(textureId: 7)),
+              SizedBox(height: 1000),
+            ]),
+          ),
+        ]),
+      );
+      scroll.jumpTo(200);
+      await tester.pump();
+
+      expect(capture.debugFrameRects(b, 1.0), <Map<String, dynamic>>[
+        px(0, 100, 400, 200, overlay), // not 0..-100 over the app bar
+      ]);
+
+      // Scrolled out of the list entirely: nothing to cover.
+      scroll.jumpTo(350);
+      await tester.pump();
+      expect(capture.debugFrameRects(b, 1.0), isEmpty);
     });
 
     testWidgets('get none in a hidden IndexedStack child',
@@ -350,6 +389,130 @@ void main() {
         maskPlatformViews: false,
       ));
       expect(ReplayPrivacyState.maskPlatformViews, isFalse);
+    });
+  });
+
+  group('Snapshotted page transitions', () {
+    // The zoom transition draws both pages as snapshot images, scaled by a
+    // painter the render tree doesn't report: a mask's layer is detached
+    // meanwhile and its bounds can't follow the pixels.
+    final GlobalKey<NavigatorState> navigator = GlobalKey<NavigatorState>();
+    const Widget masked = Align(
+      alignment: Alignment.topLeft,
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: ReplayMask(child: SizedBox(width: 100, height: 40)),
+      ),
+    );
+
+    Future<void> pumpApp(WidgetTester tester, Widget home,
+        {PageTransitionsBuilder transition =
+            const ZoomPageTransitionsBuilder()}) async {
+      setView(tester);
+      await tester.pumpWidget(MaterialApp(
+        navigatorKey: navigator,
+        builder: Replay.appBuilder,
+        theme: ThemeData(
+          pageTransitionsTheme: PageTransitionsTheme(
+            builders: <TargetPlatform, PageTransitionsBuilder>{
+              for (final TargetPlatform p in TargetPlatform.values)
+                p: transition,
+            },
+          ),
+        ),
+        home: home,
+      ));
+      await settleMasks(tester);
+    }
+
+    void push(Widget page) => navigator.currentState!
+        .push(MaterialPageRoute<void>(builder: (_) => page));
+
+    // A mask's sliding window and detach grace run on the wall clock, which
+    // pump doesn't move: let real time pass, then draw a frame (masks update
+    // once per frame).
+    Future<void> wait(WidgetTester tester, int ms) async {
+      await tester.runAsync(
+          () => Future<void>.delayed(Duration(milliseconds: ms)));
+      tester.binding.scheduleFrame();
+      await tester.pump();
+    }
+
+    testWidgets('cover the frame while a masked page zooms in',
+        (WidgetTester tester) async {
+      await pumpApp(tester, const ColoredBox(color: Color(0xFFFFFFFF)));
+      push(masked);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      // Its mask had no bounds before; it has none it can trust now.
+      expect(capture.debugFrameRects(boundary(), 1.0), <Map<String, dynamic>>[
+        px(0, 0, 400, 800, overlay),
+      ]);
+
+      // Drawn as itself again: the mask follows it, and the cover ends.
+      await tester.pumpAndSettle();
+      await wait(tester, 150); // past the sliding window
+      expect(capture.debugFrameRects(boundary(), 1.0), <Map<String, dynamic>>[
+        px(20, 20, 120, 60, overlay),
+      ]);
+    });
+
+    testWidgets('cover the frame while a masked page zooms out',
+        (WidgetTester tester) async {
+      await pumpApp(tester, masked);
+      expect(capture.debugFrameRects(boundary(), 1.0), <Map<String, dynamic>>[
+        px(20, 20, 120, 60, overlay),
+      ]);
+      push(const ColoredBox(color: Color(0xFFFFFFFF)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(capture.debugFrameRects(boundary(), 1.0), <Map<String, dynamic>>[
+        px(0, 0, 400, 800, overlay),
+      ]);
+
+      // Covered by the new page, it isn't drawn at all: the cover ends, and
+      // the mask lets go once its detach grace is over.
+      await tester.pumpAndSettle();
+      await wait(tester, 150); // past the sliding window
+      expect(capture.debugFrameRects(boundary(), 1.0),
+          isNot(contains(px(0, 0, 400, 800, overlay))));
+      await wait(tester, 500); // past the grace
+      expect(capture.debugFrameRects(boundary(), 1.0), isEmpty);
+    });
+
+    testWidgets('cover a snapshot only while it is drawn',
+        (WidgetTester tester) async {
+      // A snapshot left switched on, on a page that then gets covered.
+      final SnapshotController snapshot =
+          SnapshotController(allowSnapshotting: true);
+      addTearDown(snapshot.dispose);
+      await pumpApp(
+          tester, SnapshotWidget(controller: snapshot, child: masked));
+      expect(capture.debugFrameRects(boundary(), 1.0), <Map<String, dynamic>>[
+        px(0, 0, 400, 800, overlay),
+      ]);
+
+      navigator.currentState!.push(PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        pageBuilder: (_, __, ___) =>
+            const ColoredBox(color: Color(0xFFFFFFFF)),
+      ));
+      await tester.pumpAndSettle();
+      await wait(tester, 150); // past the sliding window
+      expect(capture.debugFrameRects(boundary(), 1.0), isEmpty);
+    });
+
+    testWidgets('follow the page when the transition is not a snapshot',
+        (WidgetTester tester) async {
+      await pumpApp(tester, const ColoredBox(color: Color(0xFFFFFFFF)),
+          transition: const FadeForwardsPageTransitionsBuilder());
+      push(masked);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      final List<Map<String, dynamic>> rects =
+          capture.debugFrameRects(boundary(), 1.0);
+      expect(rects, hasLength(1));
+      expect(rects.single, isNot(px(0, 0, 400, 800, overlay)));
     });
   });
 
@@ -448,6 +611,34 @@ void main() {
       ]);
     });
 
+    testWidgets('covers a frame whose screen turned sensitive while encoding',
+        (WidgetTester tester) async {
+      final RenderRepaintBoundary b = await pumpCaptured(
+        tester,
+        Stack(children: <Widget>[
+          at(10, 20, 100, 30, const ReplayMask(child: SizedBox.expand())),
+        ]),
+      );
+      final ui.Image image = (await tester.runAsync(
+          () => createTestImage(width: 4, height: 4, cache: false)))!;
+      capture.debugToImage = (RenderRepaintBoundary _, double __) {
+        // After this frame's rects were built, before it is sent.
+        ReplayPrivacyState.sensitiveScreen = true;
+        return Future<ui.Image>.value(image);
+      };
+
+      await tester.runAsync(capture.debugCaptureOnce);
+
+      final double dpr =
+          ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+      final double pr = dpr > 2.0 ? 2.0 : dpr;
+      final Map<Object?, Object?> frame =
+          named('reportFrame').single.arguments as Map<Object?, Object?>;
+      expect(frame['rects'], <Map<String, dynamic>>[
+        ReplayFrameCapture.fullFrame(b.size, pr),
+      ]);
+    });
+
     testWidgets('sends no frame when the rects cannot be built',
         (WidgetTester tester) async {
       await pumpCaptured(tester, const SizedBox.expand());
@@ -491,15 +682,43 @@ void main() {
       expect(taps(), isEmpty);
     });
 
-    testWidgets('hideGestures: false keeps them', (WidgetTester tester) async {
-      await pumpPlain(tester);
+    testWidgets('hideGestures: false keeps them, without their text',
+        (WidgetTester tester) async {
+      setView(tester);
+      await tester.pumpWidget(const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(child: Text('4111 1111 1111 1111')),
+      ));
       await Replay.occludeSensitiveScreen(true, hideGestures: false);
+      // The native engines are told too: iOS drops the touches the app
+      // reports unless told to keep them.
+      expect(named('occludeSensitiveScreen').single.arguments,
+          <String, dynamic>{'occlude': true, 'hideGestures': false});
 
-      await tester.tapAt(const Offset(50, 50));
-      expect(taps().map((Map<Object?, Object?> t) => t['kind']), <String>['tap']);
-      await tester.longPressAt(const Offset(50, 50));
+      await tester.tap(find.text('4111 1111 1111 1111'));
+      await tester.longPress(find.text('4111 1111 1111 1111'));
       expect(taps().map((Map<Object?, Object?> t) => t['kind']),
           <String>['tap', 'long_press']);
+      for (final Map<Object?, Object?> t in taps()) {
+        expect(t['label'], '***');
+        expect(t['x'], isA<int>());
+        expect(t['y'], isA<int>());
+      }
+    });
+
+    testWidgets('a touch that went down before the screen turned sensitive '
+        'loses its text', (WidgetTester tester) async {
+      setView(tester);
+      await tester.pumpWidget(const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(child: Text('4111 1111 1111 1111')),
+      ));
+      final TestGesture press = await tester
+          .startGesture(tester.getCenter(find.text('4111 1111 1111 1111')));
+      await Replay.occludeSensitiveScreen(true, hideGestures: false);
+      await press.up();
+
+      expect(taps().single['label'], '***');
     });
 
     testWidgets('a long press armed before the screen turned sensitive is '

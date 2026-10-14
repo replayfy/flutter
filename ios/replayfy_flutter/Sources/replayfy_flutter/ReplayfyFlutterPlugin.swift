@@ -125,11 +125,16 @@ public final class ReplayfyFlutterPlugin: NSObject, FlutterPlugin {
       ReplayBridge.occludeAllTextFields(args["occlude"] as? Bool ?? false)
       result(nil)
     case "occludeSensitiveScreen":
-      Replay.occludeSensitiveScreen(args["occlude"] as? Bool ?? false); result(nil)
+      // Both arguments: the one-argument call hides touches whenever it
+      // occludes, so `hideGestures: false` would record no touch on iOS.
+      Replay.occludeSensitiveScreen(
+        args["occlude"] as? Bool ?? false,
+        hideGestures: args["hideGestures"] as? Bool ?? true)
+      result(nil)
     case "setMaskStyle":
-      // Global default style for bulk/whole-screen occlusion + any ReplayMask
-      // that doesn't carry its own style. Per-region styles still override via
-      // the pulled rects above.
+      // The engine's global style (its native capture, which Flutter frames
+      // don't use). Dart frames send each rect's style resolved in Dart, so a
+      // ReplayMask without one follows Replay.setMaskStyle there.
       let style = ReplayMaskStyle(rawValue: args["style"] as? Int ?? 0) ?? .blur
       Replay.setMaskStyle(style)
       result(nil)

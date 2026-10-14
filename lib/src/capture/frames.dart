@@ -357,27 +357,33 @@ class ReplayFrameCapture with WidgetsBindingObserver {
   // ── Platform views ─────────────────────────────────────────────────────
 
   /// The painted platform views under [boundary], in its logical pixels,
-  /// when [collect] is on. Flutter can't image them, so they are covered
-  /// whole. Debug builds also warn here about unmasked password fields.
+  /// when [collect] is on. Flutter can't image them, so each one is covered
+  /// whole, as far as its ancestors' clips let it show. Debug builds also
+  /// warn here about unmasked password fields.
   List<Rect> _platformViewRects(RenderRepaintBoundary boundary,
       {required bool collect}) {
     final List<Rect> out = <Rect>[];
     if (collect || kDebugMode) {
       _visitPainted(boundary, boundary, out,
-          collect: collect, insideMask: false);
+          collect: collect, insideMask: false, clip: null);
     }
     return out;
   }
 
+  // [clip] is the part of the boundary [node] may paint into (null: all of
+  // it), tracked only when [collect] is on.
   void _visitPainted(
     RenderObject node,
     RenderRepaintBoundary boundary,
     List<Rect> out, {
     required bool collect,
     required bool insideMask,
+    required Rect? clip,
   }) {
     node.visitChildren((RenderObject child) {
       if (!_isPainted(node, child)) return;
+      final Rect? childClip =
+          collect ? _childClip(node, child, boundary, clip) : null;
       // Type checks only: they survive --obfuscate.
       final bool isPlatformView = child is PlatformViewRenderBox ||
           child is RenderAndroidView ||
@@ -385,8 +391,11 @@ class ReplayFrameCapture with WidgetsBindingObserver {
           child is TextureBox;
       if (isPlatformView) {
         if (collect && child is RenderBox && child.hasSize) {
-          out.add(MatrixUtils.transformRect(
-              child.getTransformTo(boundary), Offset.zero & child.size));
+          final Rect bounds = MatrixUtils.transformRect(
+              child.getTransformTo(boundary), Offset.zero & child.size);
+          // Scrolled partly out of a list, say: only the part that shows,
+          // so the box doesn't cover the app bar above it.
+          out.add(childClip == null ? bounds : bounds.intersect(childClip));
         }
         return; // never descend into a platform view
       }
@@ -398,8 +407,22 @@ class ReplayFrameCapture with WidgetsBindingObserver {
       }
       _visitPainted(child, boundary, out,
           collect: collect,
-          insideMask: insideMask || child is ReplayMaskRenderBox);
+          insideMask: insideMask || child is ReplayMaskRenderBox,
+          clip: childClip);
     });
+  }
+
+  /// [clip] narrowed by the clip [parent] paints [child] with, in
+  /// [boundary]'s logical pixels. describeApproximatePaintClip gives a
+  /// rounded or path clip's bounding box, so a placeholder can only be
+  /// larger than what shows, never smaller.
+  static Rect? _childClip(RenderObject parent, RenderObject child,
+      RenderRepaintBoundary boundary, Rect? clip) {
+    final Rect? local = parent.describeApproximatePaintClip(child);
+    if (local == null) return clip;
+    final Rect inBoundary =
+        MatrixUtils.transformRect(parent.getTransformTo(boundary), local);
+    return clip == null ? inBoundary : clip.intersect(inBoundary);
   }
 
   /// Whether [parent] paints [child] into the current frame. paintsChild
