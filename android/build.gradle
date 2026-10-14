@@ -52,13 +52,27 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     // The native Android SDK that does the real recording, from Maven Central.
-    // NOTE: requires this version to be published to Central (app.replayfy:
-    // android-sdk) — see replay-android-sdk/PUBLISHING.md. Until then, the
-    // JitPack fallback coordinate is `com.github.replayfy:android-sdk:0.0.3`.
-    implementation "app.replayfy:android-sdk:0.0.4"
+    // 0.0.5 is the first release that keeps the frames a Flutter app reports
+    // across background/resume and drops the ones reported in the background.
+    // It is also the first whose engine stop calls back once the session's
+    // uploads have settled, which the plugin's stopApplicationAndUploadData
+    // waits on without blocking the main thread.
+    implementation "app.replayfy:android-sdk:0.0.6"
+
+    // JVM unit tests (development only; not part of what an app links).
+    // Robolectric gives the bridge tests the real main Looper channel replies
+    // are posted to.
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.robolectric:robolectric:4.14.1"
 }

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:replayfy_flutter/replayfy_flutter.dart';
 import 'package:replayfy_flutter/src/capture/console.dart';
 import 'package:replayfy_flutter/src/capture/errors.dart';
+import 'package:replayfy_flutter/src/capture/frames.dart';
 import 'package:replayfy_flutter/src/capture/network.dart';
 import 'package:replayfy_flutter/src/privacy/occlusion_registry.dart';
 
@@ -60,6 +61,9 @@ void main() {
     });
 
     tearDown(() {
+      // start() arms the frame loop; a later testWidgets would otherwise
+      // start its timer on the first frame it draws and fail on it.
+      ReplayFrameCapture.instance.stop();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(command, null);
     });

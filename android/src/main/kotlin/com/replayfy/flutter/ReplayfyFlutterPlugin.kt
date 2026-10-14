@@ -32,7 +32,23 @@ import org.json.JSONObject
  * Pull (not push) is the point: IPC scales with the ~3 fps capture, not with
  * Flutter's 60–120 fps rebuilds.
  */
-class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class ReplayfyFlutterPlugin internal constructor(
+  // Ends the session at once on the calling thread, then calls back once its
+  // last uploads have settled: ReplayCore.stop(completion), the stop
+  // Replay.stopApplicationAndUploadData makes before it blocks on that
+  // callback. A parameter so a test can stand in a stop it controls.
+  private val stopThenAwaitUploads: (onSettled: () -> Unit) -> Unit,
+  // How long the Dart future waits for those uploads.
+  private val uploadWaitMs: Long = UPLOAD_WAIT_MS,
+) : FlutterPlugin, MethodChannel.MethodCallHandler {
+  // Flutter's generated plugin registrant constructs plugins with no arguments.
+  constructor() : this({ onSettled -> ReplayCore.shared.stop(onSettled) })
+
+  private companion object {
+    // Replay.stopApplicationAndUploadData's own default wait.
+    const val UPLOAD_WAIT_MS = 5_000L
+  }
+
   private lateinit var commandChannel: MethodChannel
   private lateinit var occlusionChannel: MethodChannel
   private var application: Application? = null
@@ -113,9 +129,7 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
       "pauseRecording" -> { Replay.pauseRecording(); result.success(null) }
       "resumeRecording" -> { Replay.resumeRecording(); result.success(null) }
       "cancelSession" -> { Replay.cancelSession(); result.success(null) }
-      "stopApplicationAndUploadData" -> {
-        Replay.stopApplicationAndUploadData(); result.success(null)
-      }
+      "stopApplicationAndUploadData" -> stopApplicationAndUploadData(result)
       "identify" -> {
         Replay.identify(call.argument("distinctId") ?: "", props(call.argument("properties")))
         result.success(null)
@@ -198,6 +212,56 @@ class ReplayfyFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
       "urlForCurrentSession" -> result.success(Replay.urlForCurrentSession())
       "urlForCurrentUser" -> result.success(Replay.urlForCurrentUser())
       else -> result.notImplemented()
+    }
+  }
+
+  // ── Stop and upload ──────────────────────────────────────────────────────
+
+  /** Stop now, on the main thread, and reply once the session's uploads have
+   *  settled or after [uploadWaitMs], whichever comes first. The Dart future
+   *  completes then, so awaiting it before the process exits keeps the upload.
+   *
+   *  Not Replay.stopApplicationAndUploadData: it blocks its thread until the
+   *  uploads finish, and every handler here runs on the main thread, where up
+   *  to 5 s of that freezes the app and risks an ANR. Nor that call on another
+   *  thread: the stop would then land after the calls Dart sends next, so a
+   *  `start` right behind it is ignored (the old session is still started) and
+   *  the late stop ends the session it was meant to begin. Only the wait is
+   *  asynchronous here; the reference Flutter SDK's iOS bridge does the same,
+   *  replying from its stop's completion. */
+  private fun stopApplicationAndUploadData(result: MethodChannel.Result) {
+    val reply = OneReply(result)
+    try {
+      // The callback comes on whichever upload thread settles last, or right
+      // here when nothing was recording.
+      stopThenAwaitUploads { mainHandler.post(reply) }
+    } catch (t: Throwable) {
+      reply.fail(t)
+      return
+    }
+    mainHandler.postDelayed(reply, uploadWaitMs)
+  }
+
+  /** Replies success to [result] when run, or an error through [fail]: once,
+   *  on the main thread. The upload callback and the timeout both run it, and
+   *  a second reply to a method call throws. */
+  private inner class OneReply(private val result: MethodChannel.Result) : Runnable {
+    private var sent = false
+
+    override fun run() {
+      if (claim()) result.success(null)
+    }
+
+    fun fail(t: Throwable) {
+      if (claim()) result.error("stopApplicationAndUploadData", t.message, null)
+    }
+
+    private fun claim(): Boolean {
+      if (sent) return false
+      sent = true
+      // Drop whichever of the two is still queued.
+      mainHandler.removeCallbacks(this)
+      return true
     }
   }
 
