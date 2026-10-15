@@ -130,8 +130,12 @@ after 5 s), so await it before the process exits.
 await Replay.identify('user_123', properties: {
   'email': 'ada@example.com',
   'plan': 'pro',
+  'picture': 'https://cdn.example.com/u/123.png',
 });
 ```
+
+A `picture` (or `avatar`) trait set to a public https image URL sets the
+user's avatar in the dashboard; non-URL values are ignored.
 
 ### Track an event
 
