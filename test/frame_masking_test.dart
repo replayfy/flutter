@@ -516,6 +516,83 @@ void main() {
     });
   });
 
+  group('Image filters', () {
+    // Flutter's stretch overscroll on Android (Impeller) draws a list through
+    // an ImageFiltered shader that shifts its pixels along the list, by
+    // nothing the render tree reports. Test runs have no shader filters, so a
+    // matrix filter that moves the pixels 40 px down stands in for it.
+    final ui.ImageFilter shift =
+        ui.ImageFilter.matrix(Matrix4.translationValues(0, 40, 0).storage);
+
+    // The sliding window runs on the wall clock, which pump doesn't move.
+    Future<void> wait(WidgetTester tester, int ms) async {
+      await tester.runAsync(
+          () => Future<void>.delayed(Duration(milliseconds: ms)));
+      tester.binding.scheduleFrame();
+      await tester.pump();
+    }
+
+    Future<RenderRepaintBoundary> pumpFiltered(
+        WidgetTester tester, ValueNotifier<bool> on, Widget content) {
+      return pumpCaptured(
+        tester,
+        Stack(children: <Widget>[
+          at(
+            0,
+            100,
+            400,
+            300,
+            ValueListenableBuilder<bool>(
+              valueListenable: on,
+              builder: (_, bool enabled, Widget? child) => ImageFiltered(
+                  enabled: enabled, imageFilter: shift, child: child),
+              child: Stack(children: <Widget>[content]),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    testWidgets('a mask covers all that a filter over it draws',
+        (WidgetTester tester) async {
+      final ValueNotifier<bool> on = ValueNotifier<bool>(true);
+      addTearDown(on.dispose);
+      final RenderRepaintBoundary b = await pumpFiltered(tester, on,
+          at(10, 20, 100, 30, const ReplayMask(child: SizedBox.expand())));
+
+      expect(capture.debugFrameRects(b, 1.0), <Map<String, dynamic>>[
+        px(0, 100, 400, 400, overlay), // the whole filtered area
+      ]);
+
+      // A filter that is off moves nothing: the mask's own box again, once
+      // the filtered samples have left the sliding window.
+      on.value = false;
+      await tester.pump();
+      await wait(tester, 150);
+      expect(capture.debugFrameRects(b, 1.0), <Map<String, dynamic>>[
+        px(10, 120, 110, 150, overlay),
+      ]);
+    });
+
+    testWidgets('a platform view is covered with all that a filter over it '
+        'draws', (WidgetTester tester) async {
+      final ValueNotifier<bool> on = ValueNotifier<bool>(true);
+      addTearDown(on.dispose);
+      final RenderRepaintBoundary b = await pumpFiltered(
+          tester, on, at(30, 30, 50, 50, const Texture(textureId: 7)));
+
+      expect(capture.debugFrameRects(b, 1.0), <Map<String, dynamic>>[
+        px(0, 100, 400, 400, overlay),
+      ]);
+
+      on.value = false;
+      await tester.pump();
+      expect(capture.debugFrameRects(b, 1.0), <Map<String, dynamic>>[
+        px(30, 130, 80, 180, overlay),
+      ]);
+    });
+  });
+
   group('Mask style', () {
     Widget masks() => Stack(children: <Widget>[
           at(0, 0, 10, 10, const ReplayMask(child: SizedBox.expand())),

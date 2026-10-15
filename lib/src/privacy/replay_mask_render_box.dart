@@ -39,6 +39,9 @@ class _BoundsSample {
 /// page going out), the mask covers the whole view. The snapshot is drawn
 /// with a transform the render tree doesn't report, so its pixels can't be
 /// placed, and the page coming in has no bounds before the snapshot either.
+/// Likewise, while an ancestor draws this subtree through an image filter
+/// (Flutter's stretch overscroll on Android does, as a shader), the mask
+/// covers everything that filter draws.
 class ReplayMaskRenderBox extends RenderProxyBox
     implements OcclusionBoundsReporter {
   ReplayMaskRenderBox({
@@ -178,22 +181,49 @@ class ReplayMaskRenderBox extends RenderProxyBox
   Rect? _computeGlobalBounds() {
     if (!attached || !hasSize) return null;
 
-    final Matrix4 transform = getTransformTo(null);
-    Rect bounds = MatrixUtils.transformRect(transform, Offset.zero & size);
+    // Under an image filter this subtree's pixels can be anywhere the filter
+    // draws, so the mask covers all of that instead of its own box.
+    final RenderBox box = _filteringAncestor() ?? this;
+    final Matrix4 transform = box.getTransformTo(null);
+    Rect bounds = MatrixUtils.transformRect(transform, Offset.zero & box.size);
 
     // Intersect with every ancestor clip so a widget scrolled half under a
     // clip reports only its visible portion (we must not mask outside it).
-    final Rect? clip = _accumulatedClip();
+    final Rect? clip = _accumulatedClip(box);
     if (clip != null) bounds = bounds.intersect(clip);
 
     if (bounds.width <= 0 || bounds.height <= 0) return null;
     return _snapToDevicePixels(bounds, devicePixelRatio);
   }
 
-  Rect? _accumulatedClip() {
+  /// The outermost ancestor that draws this subtree through an image filter
+  /// this frame, or null. A filter moves pixels where the render tree can't
+  /// follow them: Flutter's stretch overscroll on Android (Impeller) is a
+  /// shader that shifts a list's content along the list while the user pulls
+  /// past its end, further the further it is from the pulled edge. An outer
+  /// filter covers the inner ones, so the outermost one wins.
+  RenderBox? _filteringAncestor() {
+    RenderBox? found;
+    for (RenderObject? node = parent; node != null; node = node.parent) {
+      // `layer` is protected only to keep it out of paint code; reading it
+      // here changes nothing. A filter that is off paints no layer.
+      // ignore: invalid_use_of_protected_member
+      final ContainerLayer? filter = node.layer;
+      if (filter is ImageFilterLayer &&
+          filter.attached &&
+          node is RenderBox &&
+          node.hasSize) {
+        found = node;
+      }
+    }
+    return found;
+  }
+
+  /// The clips of [from]'s ancestors, in root logical pixels.
+  Rect? _accumulatedClip(RenderObject from) {
     Rect? acc;
-    RenderObject? child = this;
-    RenderObject? ancestor = parent;
+    RenderObject? child = from;
+    RenderObject? ancestor = from.parent;
     while (ancestor != null) {
       if (ancestor is RenderBox) {
         final Rect? clip = ancestor.describeApproximatePaintClip(child!);

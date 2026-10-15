@@ -34,6 +34,12 @@ APIs now apply to them.
   can't follow how the snapshot is scaled. Before, a page coming in showed
   its masked content until the transition ended, and a page going out could
   show a strip of it beside a mask.
+- While a list stretches as the user pulls past its end (the stretch
+  overscroll on Android), a `ReplayMask` or platform view in it covers the
+  whole list. The stretch moves the list's pixels with a shader the render
+  tree doesn't report, so a mask that kept its own box showed a strip of
+  what it hides, wider the further it was from the pulled edge. The same
+  holds under any `ImageFiltered` that is on.
 - Masks land in the right place when `Replay.appBuilder` isn't at the
   screen's top-left corner (a `builder` that wraps it in padding or a
   `SafeArea`, say), and their edges are rounded outward to whole pixels, so

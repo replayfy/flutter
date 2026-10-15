@@ -371,7 +371,8 @@ class ReplayFrameCapture with WidgetsBindingObserver {
   }
 
   // [clip] is the part of the boundary [node] may paint into (null: all of
-  // it), tracked only when [collect] is on.
+  // it), tracked only when [collect] is on. [filtered] is the area an
+  // ancestor image filter draws [node] into, if one does.
   void _visitPainted(
     RenderObject node,
     RenderRepaintBoundary boundary,
@@ -379,11 +380,15 @@ class ReplayFrameCapture with WidgetsBindingObserver {
     required bool collect,
     required bool insideMask,
     required Rect? clip,
+    Rect? filtered,
   }) {
     node.visitChildren((RenderObject child) {
       if (!_isPainted(node, child)) return;
       final Rect? childClip =
           collect ? _childClip(node, child, boundary, clip) : null;
+      // The outermost filter wins: it covers the inner ones.
+      final Rect? childFiltered = filtered ??
+          (collect ? _filteredArea(child, boundary, childClip) : null);
       // Type checks only: they survive --obfuscate.
       final bool isPlatformView = child is PlatformViewRenderBox ||
           child is RenderAndroidView ||
@@ -394,8 +399,11 @@ class ReplayFrameCapture with WidgetsBindingObserver {
           final Rect bounds = MatrixUtils.transformRect(
               child.getTransformTo(boundary), Offset.zero & child.size);
           // Scrolled partly out of a list, say: only the part that shows,
-          // so the box doesn't cover the app bar above it.
-          out.add(childClip == null ? bounds : bounds.intersect(childClip));
+          // so the box doesn't cover the app bar above it. Under an image
+          // filter, all that the filter draws: it moves the view's pixels
+          // where the render tree can't follow them.
+          out.add(childFiltered ??
+              (childClip == null ? bounds : bounds.intersect(childClip)));
         }
         return; // never descend into a platform view
       }
@@ -408,8 +416,31 @@ class ReplayFrameCapture with WidgetsBindingObserver {
       _visitPainted(child, boundary, out,
           collect: collect,
           insideMask: insideMask || child is ReplayMaskRenderBox,
-          clip: childClip);
+          clip: childClip,
+          filtered: childFiltered);
     });
+  }
+
+  /// The part of [boundary] that [node] draws its subtree into through an
+  /// image filter this frame, as far as [clip] lets it show, or null when it
+  /// draws none. Flutter's stretch overscroll on Android (Impeller) is such a
+  /// filter: a shader that shifts a list's pixels along the list while the
+  /// user pulls past its end.
+  static Rect? _filteredArea(
+      RenderObject node, RenderRepaintBoundary boundary, Rect? clip) {
+    // `layer` is protected only to keep it out of paint code; reading it here
+    // changes nothing. A filter that is off paints no layer.
+    // ignore: invalid_use_of_protected_member
+    final ContainerLayer? filter = node.layer;
+    if (filter is! ImageFilterLayer ||
+        !filter.attached ||
+        node is! RenderBox ||
+        !node.hasSize) {
+      return null;
+    }
+    final Rect area = MatrixUtils.transformRect(
+        node.getTransformTo(boundary), Offset.zero & node.size);
+    return clip == null ? area : area.intersect(clip);
   }
 
   /// [clip] narrowed by the clip [parent] paints [child] with, in
