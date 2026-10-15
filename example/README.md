@@ -47,3 +47,29 @@ flutter run        # with an emulator/simulator or device attached
 The example points `apiHost` at `http://10.0.2.2:4000` (the Android
 emulator's alias for the host's `localhost:4000`). On iOS simulator use
 `http://localhost:4000`; on a physical device use the host's LAN IP.
+
+## Privacy fixture (Android)
+
+`lib/privacy_e2e_android.dart` is a screen for checking masking end to end on
+an Android emulator: a default `ReplayMask`, a blur one, a native view and a
+WebView (both platform views), a texture, a wrapped and an unwrapped
+`obscureText` field, and a "Sensitive screen" switch. What must be hidden is
+magenta, so a recorded frame can be checked pixel by pixel.
+
+```sh
+flutter run -t lib/privacy_e2e_android.dart \
+  --dart-define=REPLAY_API_KEY=<public key> \
+  --dart-define=REPLAY_API_HOST=http://10.0.2.2:4000
+```
+
+Drive it without touching the screen (a broadcast doesn't pause the app):
+
+```sh
+adb shell am broadcast -a com.example.replayfy_flutter_example.E2E \
+  -p com.example.replayfy_flutter_example --es cmd "'occlude 1'"
+```
+
+Commands: `occlude 1|0 [keep]`, `scroll <px> [ms]`, `focus masked|plain`,
+`unfocus`, `style <0-2>`, `push`, `pop`, `stop`, `mark <name>`. The screen
+logs every element's rect to logcat under the `ReplayE2E` tag whenever it
+changes.
