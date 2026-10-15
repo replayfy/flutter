@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.0.10 - 2026-10-14
+
+Safer masking defaults for Flutter frames, and the whole-screen and style
+APIs now apply to them.
+
+- **`occludeSensitiveScreen(true)` now covers Flutter frames.** It used to
+  reach only the native screenshotter, which a Flutter app doesn't use, so
+  the screen was recorded as is. Every frame is now one solid box until you
+  call `occludeSensitiveScreen(false)`, and touches are not recorded
+  meanwhile; pass `hideGestures: false` to keep them, on both platforms,
+  without the text they hit (their label is `***`). It stays on across
+  `stop`, `startNewSession` and `cancelSession`.
+- **Masks are solid by default.** A `ReplayMask` without a `maskStyle` is now
+  a solid box (`ReplayMaskStyle.overlay`); it was a blur. Pass
+  `maskStyle: ReplayMaskStyle.blur`, or call
+  `Replay.setMaskStyle(ReplayMaskStyle.blur)`, to keep the blur.
+- **`Replay.setMaskStyle` now applies to Flutter frames**, as the style of
+  every `ReplayMask` that sets none. It had no effect on them. API change:
+  `ReplayMask.maskStyle` is now `ReplayMaskStyle?`, and null (the default)
+  means that style.
+- **Platform views are covered.** Flutter can't image a WebView, a map, or a
+  camera or video texture, so each one painted on screen is now covered with
+  a solid placeholder, as far as it shows (a WebView scrolled partly out of a
+  list is covered only inside the list). Turn this off with the new
+  `ReplayConfig.maskPlatformViews: false`.
+- Masks no longer trail the content while it scrolls or moves: a frame's
+  mask rects are taken from the same frame as its image. They were read after
+  the frame had been encoded, so a mask could land where the content had been
+  a moment before.
+- While a page transition draws a page with a `ReplayMask` as a snapshot
+  image, as the zoom page transition does, the whole frame is covered. Masks
+  can't follow how the snapshot is scaled. Before, a page coming in showed
+  its masked content until the transition ended, and a page going out could
+  show a strip of it beside a mask.
+- While a list stretches as the user pulls past its end (the stretch
+  overscroll on Android), a `ReplayMask` or platform view in it covers the
+  whole list. The stretch moves the list's pixels with a shader the render
+  tree doesn't report, so a mask that kept its own box showed a strip of
+  what it hides, wider the further it was from the pulled edge. The same
+  holds under any `ImageFiltered` that is on.
+- Masks land in the right place when `Replay.appBuilder` isn't at the
+  screen's top-left corner (a `builder` that wraps it in padding or a
+  `SafeArea`, say), and their edges are rounded outward to whole pixels, so
+  no sliver of a masked widget is left at its border.
+- If a mask can't be placed, the whole frame is covered; if the masks can't
+  be worked out at all, the frame is not sent.
+- Taps inside a `ReplayMask` keep their position but are no longer named
+  after the text they hit, and a button tapped beside its masked label no
+  longer takes the label's text as its name.
+- Deprecated `Replay.occludeAllTextFields`, `Replay.occludeAllTextView` and
+  `ReplayConfig.maskAllInputs`. They mask the app's native text views only;
+  Flutter text fields are not native views, so they never masked them. They
+  still work for native views. Wrap sensitive fields in `ReplayMask`.
+- Text fields, `obscureText` password fields included, are still not masked
+  automatically. Flutter briefly shows each typed password character on
+  Android and iOS, so an unwrapped password field can show in a replay one
+  character at a time. Debug builds now log a warning for each `obscureText`
+  field recorded outside a `ReplayMask`.
+- Android: requires the native SDK `app.replayfy:android-sdk` 0.0.7. For a
+  Flutter app it blacks out the frames recorded while the Activity's window
+  is `FLAG_SECURE`, also covers them while the whole screen is occluded, and
+  rounds mask edges outward when it scales a frame down. See its changelog
+  for its native masking changes.
+- iOS: requires the native SDK `Replayfy` 0.0.7 or later (CocoaPods and Swift
+  Package Manager). For a Flutter app it covers a blurred or pixelated mask
+  with a solid box when the filter fails (it was left unmasked), blurs evenly
+  up to a mask's edges (the original pixels could partly show through a band
+  at the border), and also covers the frames while the whole screen is
+  occluded.
+
+To update an existing app, run `flutter pub upgrade replayfy_flutter`. On
+Android, the next Gradle build resolves the new native SDK from Maven
+Central. On iOS, run `cd ios && pod update Replayfy --repo-update`
+(CocoaPods; a plain `pod install` keeps the version in `Podfile.lock`), or
+let Xcode resolve the new package version (Swift Package Manager). Then ship
+a new build.
+
 ## 0.0.9
 
 - Frames are captured only while the app is on screen. The Dart capturer's

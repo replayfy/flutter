@@ -3,8 +3,8 @@ import 'dart:convert';
 /// Top-level configuration passed to [Replayfy.start].
 ///
 /// Field names mirror the other Replayfy SDKs (`apiKey`, `apiHost`,
-/// `recordScreen`, `maskAllInputs`) so a team shipping on
-/// multiple stacks sees one vocabulary. The native engine owns the
+/// `recordScreen`) so a team shipping on multiple stacks sees one
+/// vocabulary. The native engine owns the
 /// authoritative knobs (`captureSnapshotPixels`, `captureConsole`, …); this
 /// config is serialised to JSON and handed to the native bridge at boot,
 /// which maps it onto the native `ReplayConfig`.
@@ -18,7 +18,10 @@ class ReplayConfig {
     this.recordConsole = true,
     this.recordErrors = true,
     this.recordPerformance = true,
+    @Deprecated('Has no effect on Flutter widgets: Flutter text fields are not '
+        'native text views. Wrap sensitive fields in ReplayMask.')
     this.maskAllInputs = false,
+    this.maskPlatformViews = true,
     this.autoScreenName = true,
     this.useRemoteConfig = true,
     this.debug = false,
@@ -57,9 +60,18 @@ class ReplayConfig {
   /// session is recording; the flag is forwarded for parity/forward-compat.)
   final bool recordPerformance;
 
-  /// Auto-mask all text inputs. Maps to native bulk text-field occlusion.
-  /// Default false.
+  /// Auto-mask the host's native text inputs. Maps to native bulk text-field
+  /// occlusion. Default false. Flutter text fields are drawn by Flutter, not
+  /// as native text views, so this masks none of them: wrap sensitive fields
+  /// in `ReplayMask`.
+  @Deprecated('Has no effect on Flutter widgets: Flutter text fields are not '
+      'native text views. Wrap sensitive fields in ReplayMask.')
   final bool maskAllInputs;
+
+  /// Cover platform views (WebView, maps, camera and video textures) with a
+  /// solid placeholder. Flutter cannot image their content, and what it can't
+  /// see it can't mask, so they are covered whole. Default true.
+  final bool maskPlatformViews;
 
   /// Auto-tag screens from the navigator. Maps to native `autoScreenName`.
   /// Default true.
@@ -82,6 +94,7 @@ class ReplayConfig {
         'recordErrors': recordErrors,
         'recordPerformance': recordPerformance,
         'maskAllInputs': maskAllInputs,
+        'maskPlatformViews': maskPlatformViews,
         'autoScreenName': autoScreenName,
         'useRemoteConfig': useRemoteConfig,
         'debug': debug,

@@ -16,22 +16,27 @@ import 'replay_mask_render_box.dart';
 /// One widget, like the React Native SDK's `<ReplayMask>`. Wrap any sensitive
 /// subtree; nest freely. The masked region tracks the live widget (scroll,
 /// layout, transitions) and the native engine renders it per [maskStyle] —
-/// `blur` (default) or a solid `overlay` — the same render the native
-/// iOS/Android engines produce.
+/// a solid `overlay`, `blur` or `pixelate` — the same render the native
+/// iOS/Android engines produce. Without a [maskStyle] the region uses the
+/// style set with `Replay.setMaskStyle`, a solid overlay unless changed.
 ///
 /// Unlike those SDKs there is no native view to register: Flutter paints into
-/// a single surface, so the bounds are computed in Dart and the engine pulls
-/// them (with the style) at capture rate. See [OcclusionRegistry] for why pull
-/// beats push here.
+/// a single surface, so the bounds are computed in Dart and sent with each
+/// captured frame. Taps inside the region are recorded without a label.
+///
+/// Text fields, `obscureText` password fields included, are not masked
+/// automatically: wrap every sensitive field in a [ReplayMask].
 class ReplayMask extends SingleChildRenderObjectWidget {
   const ReplayMask({
     super.key,
-    this.maskStyle = ReplayMaskStyle.blur,
+    this.maskStyle,
     required Widget super.child,
   });
 
-  /// How this region is rendered in the recording. Default [ReplayMaskStyle.blur].
-  final ReplayMaskStyle maskStyle;
+  /// How this region is rendered in the recording. Null (the default) uses
+  /// the style set with `Replay.setMaskStyle`: [ReplayMaskStyle.overlay]
+  /// unless changed.
+  final ReplayMaskStyle? maskStyle;
 
   @override
   ReplayMaskRenderBox createRenderObject(BuildContext context) {

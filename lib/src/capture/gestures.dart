@@ -5,6 +5,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../privacy/privacy_state.dart';
+import '../privacy/replay_mask.dart';
+import '../privacy/replay_mask_render_box.dart';
 import '../replay_channel.dart';
 
 /// Dart-side gesture capture that reports the **actual widget tapped**.
@@ -65,12 +68,26 @@ class ReplayGestureCapture {
     }
   }
 
+  // occludeSensitiveScreen hides touches too, unless asked to keep them.
+  static bool get _hidden =>
+      ReplayPrivacyState.sensitiveScreen &&
+      ReplayPrivacyState.hideGesturesOnSensitiveScreen;
+
+  // The label of a touch kept on a sensitive screen (hideGestures: false):
+  // its position, never the text it hit. The native iOS engine names such a
+  // touch the same way, so both platforms record the same event.
+  static const String _sensitiveLabel = '***';
+
   static void _onDown(PointerDownEvent e) {
+    // First, so a hidden touch costs no hit test either.
+    if (_hidden) return;
     if (e.kind == PointerDeviceKind.trackpad) return;
     _pointer = e.pointer;
     _downPos = e.position;
     _consumed = false;
-    _downLabel = _labelAt(e.position, e.viewId) ?? '';
+    _downLabel = ReplayPrivacyState.sensitiveScreen
+        ? _sensitiveLabel
+        : _labelAt(e.position, e.viewId) ?? '';
 
     _longPressTimer?.cancel();
     _longPressTimer = Timer(const Duration(milliseconds: _longPressMs), () {
@@ -111,11 +128,16 @@ class ReplayGestureCapture {
   }
 
   static void _emit(String kind, Offset pos, String label, {String? direction}) {
+    // Also catches a long-press timer armed before the screen was hidden.
+    if (_hidden) return;
+    // Also blanks a touch that went down before the screen turned sensitive.
+    final String safeLabel =
+        ReplayPrivacyState.sensitiveScreen ? _sensitiveLabel : label;
     // Fire-and-forget; never let a gesture report throw into the app (e.g. a
     // platform without the `reportTap` handler yet → MissingPluginException).
     ReplayChannel.instance.invoke('reportTap', <String, dynamic>{
       'kind': kind,
-      'label': label,
+      'label': safeLabel,
       'x': pos.dx.round(),
       'y': pos.dy.round(),
       if (direction != null) 'direction': direction,
@@ -129,6 +151,8 @@ class ReplayGestureCapture {
   /// back to `Element`s, and picks the most meaningful label deepest-first.
   static String? _labelAt(Offset pos, int viewId) {
     final hits = _hitTest(pos, viewId);
+    // A touch inside a ReplayMask keeps its position but never its text.
+    if (hits.any((RenderObject o) => o is ReplayMaskRenderBox)) return '';
     if (hits.isEmpty) return null;
 
     final root = WidgetsBinding.instance.rootElement;
@@ -226,6 +250,8 @@ class ReplayGestureCapture {
     void visit(Element el) {
       if (found != null) return;
       final w = el.widget;
+      // A control tapped on its padding must not borrow masked text.
+      if (w is ReplayMask) return;
       if (w is Text && (w.data?.isNotEmpty ?? false)) {
         found = w.data;
         return;
